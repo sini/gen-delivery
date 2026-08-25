@@ -276,7 +276,6 @@ let
     let
       nodes = projected.nodes;
 
-      # The class-major fold. `realized` is self-referential: a node's `extent` is
       # THE DECLARED ORDER IS TOTAL OVER THE LAYERS, IN BOTH DIRECTIONS. An omitted layer is a
       # DELETED CONTRIBUTION, not a shorter list: drop `projection` and `bindings.node` — which this
       # contract documents as always present — silently vanishes, and the terminal that reads it
@@ -297,6 +296,7 @@ let
         else
           null;
 
+      # The class-major fold. `realized` is self-referential: a node's `extent` is
       # `realized.<class>`, the same set being built — lazy, so forcing one node's artifact never
       # forces a peer's (the spine is only the class's node keys, populated by `listToAttrs` names).
       realized = builtins.mapAttrs (
