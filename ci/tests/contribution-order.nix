@@ -200,26 +200,48 @@ in
       expected = true;
     };
 
-    # ── the layer names are closed, and an unknown one refuses ──
+    # ── THE ORDER IS TOTAL OVER THE LAYERS, IN BOTH DIRECTIONS ──
+    # An omitted layer is a DELETED CONTRIBUTION, not a shorter list: drop `projection` and
+    # `bindings.node` — which this contract documents as always present — silently vanishes, and
+    # the terminal that reads it fails deep inside the target rather than here.
+    test-omitted-layer-refuses = {
+      expr =
+        refuses
+          (realizeWith [
+            "global"
+            "refinement"
+          ]).nixos.n1.bindings;
+      expected = true;
+    };
+    # The direction that was already guarded, kept as the in-run control that this is a TOTALITY
+    # check rather than a length check.
     test-unknown-layer-refuses = {
       expr =
         refuses
           (realizeWith [
             "projection"
-            "kq7wnf3xv"
+            "n7wqjx4bd"
           ]).nixos.n1.bindings;
       expected = true;
     };
-    # CONTROL, same run — a layerOrder naming only declared layers does not refuse.
-    test-control-declared-layer-subset-does-not-refuse = {
-      expr = refuses (realizeWith [ "projection" ]).nixos.n1.bindings;
+    # CONTROL, same run — the full declared order does not refuse. Without it a check that refused
+    # everything would satisfy both rows above.
+    test-control-the-total-order-does-not-refuse = {
+      expr = refuses declared.nixos.n1.bindings;
       expected = false;
     };
-    # A SUBSET is a legitimate declaration: dropping a layer drops its contribution rather than
-    # falling back to it.
-    test-layer-order-subset-drops-the-omitted-layer = {
-      expr = (realizeWith [ "projection" ]).nixos.n1.bindings ? shared;
-      expected = false;
+    # The refusal does not depend on there being a node to fold for: a realization with no nodes
+    # never reaches the per-node fold, so a check wired there would fire on the SIZE of the input
+    # rather than on the order being partial.
+    test-omitted-layer-refuses-with-no-nodes-to-realize = {
+      expr = refuses (
+        genDelivery.realize {
+          projected.nodes = { };
+          terminals.nixos = args: args;
+          layerOrder = [ "global" ];
+        }
+      );
+      expected = true;
     };
   };
 }

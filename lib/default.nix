@@ -277,6 +277,26 @@ let
       nodes = projected.nodes;
 
       # The class-major fold. `realized` is self-referential: a node's `extent` is
+      # THE DECLARED ORDER IS TOTAL OVER THE LAYERS, IN BOTH DIRECTIONS. An omitted layer is a
+      # DELETED CONTRIBUTION, not a shorter list: drop `projection` and `bindings.node` — which this
+      # contract documents as always present — silently vanishes, and the terminal that reads it
+      # fails deep inside the target, far from the edit. ADR-0029's precondition is a DECLARED TOTAL
+      # order, and one direction guarded is not that. Checked once per call and forced at the root,
+      # for the same reason the category source is: a realization with no nodes never reaches the
+      # per-node fold, so a lazy check would fire on the SIZE of the input.
+      _layerOrderCheck =
+        let
+          sep = builtins.concatStringsSep ", ";
+          missing = builtins.filter (l: !(builtins.elem l layerOrder)) defaultLayerOrder;
+          unknown = builtins.filter (l: !(builtins.elem l defaultLayerOrder)) layerOrder;
+        in
+        if missing != [ ] then
+          throw "gen-delivery: realize: layerOrder omits contribution layer(s) ${sep missing} — the order is DECLARED and TOTAL over ${sep defaultLayerOrder}, so an omitted layer deletes its contribution"
+        else if unknown != [ ] then
+          throw "gen-delivery: realize: layerOrder names ${sep unknown}, which is not a contribution layer (declared: ${sep defaultLayerOrder})"
+        else
+          null;
+
       # `realized.<class>`, the same set being built — lazy, so forcing one node's artifact never
       # forces a peer's (the spine is only the class's node keys, populated by `listToAttrs` names).
       realized = builtins.mapAttrs (
@@ -302,11 +322,7 @@ let
                         refinement = refinements.${nodeName} or { };
                       };
                       mergedBindings = algebra.record.foldLayers {
-                        layers = map (
-                          l:
-                          contributions.${l}
-                            or (throw "gen-delivery: realize: layerOrder names `${l}`, which is not a contribution layer (declared: ${builtins.concatStringsSep ", " defaultLayerOrder})")
-                        ) layerOrder;
+                        layers = map (l: contributions.${l}) layerOrder;
                       };
                     in
                     terminal (
@@ -329,7 +345,7 @@ let
         )
       ) terminals;
     in
-    realized;
+    builtins.seq _layerOrderCheck realized;
 in
 {
   inherit project realize;
