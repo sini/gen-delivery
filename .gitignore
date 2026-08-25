@@ -1,0 +1,9 @@
+result
+.direnv
+.gcroots
+.worktrees/
+.pre-commit-config.yaml
+
+# The user-level ignore file carries `.envrc`; the sibling gen repositories track theirs, so this
+# negation is what keeps the direnv entry point in the tree rather than a per-clone force-add.
+!.envrc
