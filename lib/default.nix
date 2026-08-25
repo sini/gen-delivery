@@ -9,12 +9,21 @@
 # only consumer in another.
 #
 # ── THE SUBSTRATE ARRIVES INJECTED, WHICH IS THE BOUNDARY RULE AND NOT A CONVENIENCE ──
-# Only plain data crosses a gen↔gen boundary. This library takes `aspects` as a VALUE and constructs
-# inside the consumer's own evaluation; it re-exports it nowhere, and in particular it republishes
-# no gen-aspects accessor under a name of its own. The key-category DECLARATION reaches the
-# predicate the same way — as an argument, never as a co-resident — which is why this library can
-# read a declaration gen-aspects owns without gen-aspects acquiring a delivery-shaped role over the
-# facts it publishes.
+# Only plain data crosses a gen↔gen boundary. This library takes `algebra` and `aspects` as VALUES
+# and constructs inside the consumer's own evaluation; it re-exports neither, and in particular it
+# republishes no gen-aspects accessor and no algebra constructor under a name of its own. The
+# key-category DECLARATION reaches the predicate the same way — as an argument, never as a
+# co-resident — which is why this library can read a declaration gen-aspects owns without
+# gen-aspects acquiring a delivery-shaped role over the facts it publishes.
+#
+# ── AND THE ORDERED FOLD IS NOT WRITTEN HERE ──
+# The contribution merge is `algebra.record.foldLayers`: an ordered layer list, least-specific
+# first, last wins, no strength lattice, an unknown per-field strategy refused by name. That is
+# already the compliant shape for an ordered fold, and it is already built. What this surface writes
+# is the LAYER DECLARATION — which layers exist and in what order — and that declaration is its own
+# readable artefact rather than a parameter of somebody else's fold. No `strategies` are passed: the
+# default is `replace`, which is measured equal to the positional `//` chain this merge has always
+# been, so the per-field knob is available and unexercised here.
 #
 # ── WHAT IS ABOVE THE STACK RATHER THAN A LAYER OF IT ──
 # Delivery targets and terminals are framework notions: a configuration framework assembles with
@@ -49,8 +58,31 @@
 # `modules`, `bindings` and `name` are out of scope for the rename: the first is the module
 # system's own vocabulary, the second is already the substrate's relation vocabulary, and the third
 # is the member's key rather than a framework term.
-{ aspects }:
+{ algebra, aspects }:
 let
+  # ── THE DECLARED CONTRIBUTION ORDER ──
+  # An ordered list of NAMED contribution layers, least-specific first, folded in declared order.
+  # The order is a PARAMETER of the realization and a declaration with a default value — never an
+  # implicit one, and never derived from what kind of thing each layer is. A derivation over a
+  # kind hierarchy would re-import the topology an ordered fold exists to keep out.
+  #
+  #   projection  the projection's own binding for the node — `{ node = <resolved instance>; }`.
+  #   global      the caller's attrset, applied to every node.
+  #   refinement  the caller's per-node entry, `{ <node> = <attrset>; }`.
+  #
+  # THE THREE ARE SEPARATE INPUTS, and that is a fix rather than a shape. They used to be two: one
+  # attrset carrying both the global layer AND the per-node refinements under node-named keys,
+  # disambiguated by a runtime `isAttrs` guess. The consequence was admitted in the contract's own
+  # header — a node-named refinement key also rode into every node's merged bindings as a literal
+  # binding, surprising whenever a formal happened to share a node name. Named layers separate the
+  # two namespaces by construction, and an explicit layer list cannot even be written while one
+  # layer is nested inside another.
+  defaultLayerOrder = [
+    "projection"
+    "global"
+    "refinement"
+  ];
+
   # ── THE REALIZATION PREDICATE ──
   # ADR-0028's Rider: a delivery class realizes only on DECLARED CONTENT, never on structural
   # shape. A key of a flat-registry aspect entry is a delivery class iff BOTH:
@@ -198,7 +230,8 @@ let
   # `realize` — the terminal registry fold. PURE (builtins only, no nixpkgs). It turns a `project`
   # result plus a per-class terminal into class-major artifacts:
   #
-  #     realize { projected; terminals; bindings ? {}; extraModules ? {}; } -> { <class>.<node> = artifact; }
+  #     realize { projected; terminals; bindings ? {}; refinements ? {}; layerOrder ? …;
+  #               extraModules ? {}; } -> { <class>.<node> = artifact; }
   #
   # For each class that has a terminal, every node whose projection carries a NON-EMPTY module list
   # for that class is realized by calling the terminal with the pinned contract (below). A node with
@@ -210,9 +243,9 @@ let
   #   name         the node's registry key (string).
   #   modules      `projected.nodes.<name>.classes.<class>` — this class's deferredModule list.
   #                Opaque and unforced; the terminal decides whether/when to evaluate it.
-  #   bindings     the merged binding set, most specific wins: the projection's
-  #                `{ node = <instance> }` < global `bindings` < per-node `bindings.<name>`. There
-  #                is no separate `node` field — `bindings.node` IS the resolved instance.
+  #   bindings     the contribution layers folded in the DECLARED order (`layerOrder`). There is no
+  #                separate `node` field — `bindings.node` IS the resolved instance, contributed by
+  #                the projection layer.
   #   extent       the `realized.<class>` set itself — a lazy cross-node accessor for THIS class,
   #                and for this class ONLY: a terminal never receives a peer class's set. Its SPINE
   #                is the class's node keys, so reading the keys forces no peer artifact.
@@ -227,12 +260,16 @@ let
       # `{ <class> = terminal; }` — which classes to realize, and how. The output keys are exactly
       # these class names.
       terminals,
-      # The extra-bindings hook: a global attrset applied to every node, optionally carrying
-      # per-node refinements under `<node>` keys (`bindings.<node>` wins over the global layer). The
-      # global layer splats WHOLESALE (`nc.bindings // bindings // perNode`), so any node-named
-      # refinement key also rides into every node's merged bindings as a literal binding — harmless,
-      # but surprising if a formal happens to share a node name.
+      # THE GLOBAL contribution layer: one attrset applied to every node. It holds bindings and
+      # nothing else — a key here named after a node is a binding named after a node, not that
+      # node's refinement.
       bindings ? { },
+      # THE PER-NODE contribution layer: `{ <node> = <attrset>; }`. A separate input from the
+      # global layer, which is what keeps the two namespaces apart by construction.
+      refinements ? { },
+      # THE DECLARED ORDER over those layers, least-specific first. A default value, readable and
+      # overridable; never an implicit order, and never derived from what kind of thing a layer is.
+      layerOrder ? defaultLayerOrder,
       # `{ <node> = [ module ]; }` — per-node extras handed to the terminal (`[]` when absent).
       extraModules ? { },
     }:
@@ -259,10 +296,18 @@ let
                   name = nodeName;
                   value =
                     let
-                      # The per-node refinement layer, applied only when `bindings.<name>` is an
-                      # attrset (a bare global value under a node-named key is not a refinement).
-                      perNode = if builtins.isAttrs (bindings.${nodeName} or null) then bindings.${nodeName} else { };
-                      mergedBindings = nc.bindings // bindings // perNode;
+                      contributions = {
+                        projection = nc.bindings;
+                        global = bindings;
+                        refinement = refinements.${nodeName} or { };
+                      };
+                      mergedBindings = algebra.record.foldLayers {
+                        layers = map (
+                          l:
+                          contributions.${l}
+                            or (throw "gen-delivery: realize: layerOrder names `${l}`, which is not a contribution layer (declared: ${builtins.concatStringsSep ", " defaultLayerOrder})")
+                        ) layerOrder;
+                      };
                     in
                     terminal (
                       {
@@ -288,4 +333,8 @@ let
 in
 {
   inherit project realize;
+
+  # The layer declaration, published. An order that ships as a default is only a declaration if a
+  # consumer can read it; one that can only be overridden is an implicit order with a hatch.
+  inherit defaultLayerOrder;
 }

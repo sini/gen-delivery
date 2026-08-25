@@ -13,21 +13,29 @@
     # schema and flatten its resolved tree, and two gen-merge instances would make a fixture a
     # question about which copy answered.
     gen-aspects.url = "github:sini/gen-aspects";
+
+    # The other injected half: the record algebra whose ordered layered fold this surface's
+    # contribution order is expressed over. Declared beside gen-aspects rather than reached through
+    # it — nothing here compares a value that crosses between the two, so a single instance of each
+    # is all the acceptance run owes.
+    gen-algebra.url = "github:sini/gen-algebra";
   };
 
   outputs =
     inputs@{
       gen-harness,
       gen-aspects,
+      gen-algebra,
       nixpkgs,
       ...
     }:
     let
       aspects = gen-aspects.lib;
+      algebra = gen-algebra.lib;
       genMerge = gen-aspects.inputs.gen-merge.lib;
       genSchema = gen-aspects.inputs.gen-schema.lib;
 
-      genDelivery = import ../lib { inherit aspects; };
+      genDelivery = import ../lib { inherit algebra aspects; };
 
       # The fixture builder: a real aspect schema, resolved through gen-merge's byte-mode
       # `evalModuleTree`, exactly as a consumer's own composition would reach this surface. It
@@ -76,6 +84,7 @@
           genDelivery
           mkFixture
           aspects
+          algebra
           genMerge
           genSchema
           nixpkgs
