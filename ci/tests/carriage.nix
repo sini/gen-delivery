@@ -79,6 +79,20 @@ in
         marker = "target-owned";
       };
     };
+    # THE WELD, SPLIT: the emitted carriage key takes the projection entry's field EXPLICITLY, so
+    # the two sides no longer share an identifier. What this pins is the pairing — emitted key to
+    # source field — which is exactly what an `inherit` hides.
+    test-split-weld-emits-the-entry-field = {
+      expr = realized.nixos.owned.osConfig == projected.hosts.owned.osConfig;
+      expected = true;
+    };
+    # CONTROL against a blind cell — the same comparison against a DIFFERENT field of the same
+    # entry is false, so the equality above discriminates the pairing rather than matching any two
+    # attrsets that happen to be reachable.
+    test-control-split-weld-comparison-discriminates = {
+      expr = realized.nixos.owned.osConfig == projected.hosts.owned.bindings;
+      expected = false;
+    };
 
     # ── the projection's own binding reaches the terminal ──
     test-bindings-carry-the-resolved-instance = {

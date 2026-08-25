@@ -209,7 +209,14 @@ let
                         nodes = realized.${className};
                         extraModules = extraModules.${hostName} or [ ];
                       }
-                      // (if hc ? osConfig then { inherit (hc) osConfig; } else { })
+                      # THE WELD, SPLIT. `inherit (hc) osConfig` made ONE identifier serve two
+                      # contracts: the projection-entry field name and the emitted carriage key
+                      # name. Renaming either side through the `inherit` silently renames the
+                      # other, and the target-facing key is what a class module reads — so the
+                      # obvious rename breaks the target's own evaluation, far from the edit.
+                      # Splitting is behaviour-neutral and CHANGES NO NAME ON EITHER SIDE; the
+                      # presence test still reads the entry's field under its current name.
+                      // (if hc ? osConfig then { osConfig = hc.osConfig; } else { })
                     );
                 }
               ]
