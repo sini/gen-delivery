@@ -4,6 +4,8 @@ result
 .worktrees/
 .pre-commit-config.yaml
 
-# The user-level ignore file carries `.envrc`; the sibling gen repositories track theirs, so this
-# negation is what keeps the direnv entry point in the tree rather than a per-clone force-add.
+# The user-level ignore file carries `.envrc` and `/AGENTS.md`; the sibling gen repositories track
+# both, so these negations keep the direnv entry point and the agent sheet in the tree rather than
+# behind a per-clone force-add.
 !.envrc
+!/AGENTS.md
