@@ -16,8 +16,9 @@ let
   # declared by the grammar, never set by any definition; `nixos` is the same-shape sibling that IS
   # set, so the two differ on the content axis and on nothing else.
   #
-  # TWO hosts, both members of `web` — so "realizes no node" and "realizes EVERY member node" are
-  # both claims over a non-empty domain.
+  # TWO node instances in the fixture's own `hosts` registry — the registry's name is the
+  # consumer's, which is why `selectHosts` still names it — and both are members of `web`, so
+  # "realizes no node" and "realizes EVERY member node" are both claims over a non-empty domain.
   fixture = mkFixture {
     cnf = {
       keySemantics.nixos.category = "class";
@@ -80,7 +81,7 @@ in
     # present. The single-element list is the positive half: the projection is live, and `metrics`
     # is missing from a set that has members.
     test-contentless-class-not-projected = {
-      expr = builtins.attrNames projected.hosts.h1.classes;
+      expr = builtins.attrNames projected.nodes.h1.classes;
       expected = [ "nixos" ];
     };
 

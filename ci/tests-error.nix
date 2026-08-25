@@ -35,8 +35,8 @@ in
         (genDelivery.project {
           values = { };
           selectHosts = _: "not an attrset";
-        }).hosts;
-      expectedError.msg = exactly "gen-delivery: project: selectHosts must return an attrset of host instances ({ <host> = <instance>; }), got string";
+        }).nodes;
+      expectedError.msg = exactly "gen-delivery: project: selectHosts must return an attrset of node instances ({ <node> = <instance>; }), got string";
     };
   };
 }
