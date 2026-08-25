@@ -81,8 +81,13 @@ Three named contribution layers, folded least-specific first by `algebra.record.
 | `refinement` | `refinements.<node>`, the caller's per-node entry      |
 
 `defaultLayerOrder` is `[ "projection" "global" "refinement" ]` — a declaration with a default
-value, published so a consumer can read it rather than only override it. Naming a layer that does
-not exist refuses by name; naming a subset drops the omitted layer's contribution.
+value, published so a consumer can read it rather than only override it.
+
+**The order is TOTAL over the layers, in both directions, and both refuse by name.** Naming a layer
+that does not exist refuses; so does omitting one. An omitted layer is a *deleted contribution*, not
+a shorter list — drop `projection` and `bindings.node`, which the contract documents as always
+present, silently vanishes and the terminal that reads it fails deep inside the target. ADR-0029's
+precondition is a declared *total* order, and one direction guarded is not that.
 
 The **global** and **refinement** layers are separate inputs, and that is a fix rather than a shape.
 They used to be one attrset carrying both, with per-node refinements under node-named keys and a

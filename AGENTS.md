@@ -38,6 +38,11 @@ reads it. **A registry with no member aspects never reaches the predicate**, so 
 fire on the SIZE of the input instead of on the input's absence, and a small fixture would read
 clean.
 
+`layerOrder` is refused the same way and for the same reason — at `realize`'s root, both directions.
+The order is TOTAL over the layers: naming an unknown layer refuses, and so does omitting a declared
+one, because an omitted layer is a *deleted contribution* rather than a shorter list. Wired into the
+per-node fold instead, the check would fire on the size of the input.
+
 ## traps and measured facts
 
 |                                                                                                                                                                                                                                                                                                                                              |                                             |
