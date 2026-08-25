@@ -31,6 +31,11 @@ let
     "gen-delivery: project: no category source — `cnf` is required and has no default. "
     + "The realization predicate reads the key-category declaration; with none it could only fall "
     + "back to a structural shape test.";
+
+  duplicateLayer =
+    "gen-delivery: realize: layerOrder repeats contribution layer(s) projection — a sequence with "
+    + "duplicates is not an order, and the LAST occurrence would decide, silently inverting the "
+    + "declared precedence";
 in
 {
   flake.testsError = {
@@ -54,6 +59,25 @@ in
           selectHosts = _: "not an attrset";
         }).nodes;
       expectedError.msg = exactly "gen-delivery: project: selectHosts must return an attrset of node instances ({ <node> = <instance>; }), got string";
+    };
+
+    # A DUPLICATED layer in `layerOrder`. The seeded shape keeps every declared layer present and
+    # names no unknown one, so neither sibling refusal in the totality check is reachable — only the
+    # duplicate clause can throw here, and the pattern asserts the duplicated layer is NAMED. The
+    # empty projection makes the same point the suite's no-nodes cell does: the check is forced at
+    # realize's root, not inside the per-node fold.
+    test-duplicate-layer-refuses-by-name = {
+      expr = genDelivery.realize {
+        projected.nodes = { };
+        terminals.nixos = args: args;
+        layerOrder = [
+          "projection"
+          "projection"
+          "global"
+          "refinement"
+        ];
+      };
+      expectedError.msg = exactly duplicateLayer;
     };
   };
 }

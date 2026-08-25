@@ -280,19 +280,27 @@ let
       # DELETED CONTRIBUTION, not a shorter list: drop `projection` and `bindings.node` — which this
       # contract documents as always present — silently vanishes, and the terminal that reads it
       # fails deep inside the target, far from the edit. ADR-0029's precondition is a DECLARED TOTAL
-      # order, and one direction guarded is not that. Checked once per call and forced at the root,
-      # for the same reason the category source is: a realization with no nodes never reaches the
-      # per-node fold, so a lazy check would fire on the SIZE of the input.
+      # order, and one direction guarded is not that. A DUPLICATED layer is refused for the same
+      # reason: the fold consumes the list positionally, so the LAST occurrence would decide —
+      # silently inverting the declared precedence — and a sequence with duplicates is not an order.
+      # Checked once per call and forced at the root, for the same reason the category source is: a
+      # realization with no nodes never reaches the per-node fold, so a lazy check would fire on the
+      # SIZE of the input.
       _layerOrderCheck =
         let
           sep = builtins.concatStringsSep ", ";
           missing = builtins.filter (l: !(builtins.elem l layerOrder)) defaultLayerOrder;
           unknown = builtins.filter (l: !(builtins.elem l defaultLayerOrder)) layerOrder;
+          duplicated = builtins.filter (
+            l: builtins.length (builtins.filter (x: x == l) layerOrder) > 1
+          ) defaultLayerOrder;
         in
         if missing != [ ] then
           throw "gen-delivery: realize: layerOrder omits contribution layer(s) ${sep missing} — the order is DECLARED and TOTAL over ${sep defaultLayerOrder}, so an omitted layer deletes its contribution"
         else if unknown != [ ] then
           throw "gen-delivery: realize: layerOrder names ${sep unknown}, which is not a contribution layer (declared: ${sep defaultLayerOrder})"
+        else if duplicated != [ ] then
+          throw "gen-delivery: realize: layerOrder repeats contribution layer(s) ${sep duplicated} — a sequence with duplicates is not an order, and the LAST occurrence would decide, silently inverting the declared precedence"
         else
           null;
 
