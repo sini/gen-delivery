@@ -41,9 +41,18 @@ let
   # A reflecting terminal — the carriage is assertable without forcing a class body.
   reflect = args: args;
 
+  # A per-node extra, supplied for ONE of the two nodes. Until this fixture existed no cell here
+  # supplied a non-empty entry, so the per-node routing had no discriminating oracle: a defect that
+  # dropped every consumer's extras — a constant `[ ]` in place of the per-node read — left the
+  # suite green, because the only value cell asserted the DEFAULT-empty case.
+  nodeExtra = {
+    config.marker = "per-node-extra";
+  };
+
   realized = genDelivery.realize {
     inherit projected;
     terminals.nixos = reflect;
+    extraModules.owned = [ nodeExtra ];
   };
 
   carriageKeys = node: builtins.sort builtins.lessThan (builtins.attrNames realized.nixos.${node});
@@ -218,6 +227,15 @@ in
       expr = realized.nixos.owned.name;
       expected = "owned";
     };
+    # ── the per-node extras ROUTE, and the pair is what measures it ──
+    # The node the entry names receives it…
+    test-extra-modules-reach-the-node-they-are-keyed-under = {
+      expr = realized.nixos.owned.extraModules == [ nodeExtra ];
+      expected = true;
+    };
+    # …and the node without an entry gets the default, in the same run. Read alone either row is
+    # satisfied by a constant: the first by handing every node every extra, the second by handing
+    # no node anything. Together they pin the routing.
     test-extra-modules-default-empty = {
       expr = realized.nixos.plain.extraModules;
       expected = [ ];
