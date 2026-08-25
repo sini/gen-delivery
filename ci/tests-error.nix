@@ -24,16 +24,33 @@
 { genDelivery, lib, ... }:
 let
   exactly = msg: "^" + lib.escapeRegex msg + "$";
+
+  # Held as one binding because the text is long enough that inlining it beside the `exactly` call
+  # invites a `+` that binds looser than the application and silently anchors only its first term.
+  missingCategorySource =
+    "gen-delivery: project: no category source — `cnf` is required and has no default. "
+    + "The realization predicate reads the key-category declaration; with none it could only fall "
+    + "back to a structural shape test.";
 in
 {
   flake.testsError = {
+    # THE MISSING DECLARATION INPUT. Its suite cell asserts THAT the surface refuses; this one
+    # asserts it refuses AS the missing category source, which is the half that distinguishes it
+    # from the refusal below and from any other throw the projection could produce.
+    test-missing-category-source-names-the-input = {
+      expr = (genDelivery.project { values = { }; }).aspects;
+      expectedError.msg = exactly missingCategorySource;
+    };
+
     # The caller-supplied selector must return the instance registry. A non-attrset result would
     # otherwise die inside `mapAttrs` as an anonymous "expected a set", naming neither the surface
-    # nor the argument that produced it.
+    # nor the argument that produced it. The declaration IS present here, so the two refusals are
+    # reachable independently rather than one shadowing the other.
     test-select-hosts-non-attrset-refuses-by-name = {
       expr =
         (genDelivery.project {
           values = { };
+          cnf.keySemantics = { };
           selectHosts = _: "not an attrset";
         }).nodes;
       expectedError.msg = exactly "gen-delivery: project: selectHosts must return an attrset of node instances ({ <node> = <instance>; }), got string";

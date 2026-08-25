@@ -51,23 +51,54 @@
 # is the member's key rather than a framework term.
 { aspects }:
 let
-  # The class fields of a flat-registry aspect entry: keys whose value is a deferredModule (an
-  # attrset carrying an `imports` LIST). STRUCTURAL — and structural is the defect. A class DECLARED
-  # but never given content reads `null` today (gen-aspects represents absence rather than
-  # fabricating an empty deferredModule), so `isAttrs` below excludes it and the projection is
-  # content-driven BY COINCIDENCE: should the class option ever read as `{ imports = [ ]; }`, this
-  # filter admits it and the terminal is called on structural shape, which ADR-0028's Rider forbids.
-  # A key declared as a CHANNEL whose value carries an `imports` list is admitted here too, which no
-  # representation choice upstream can fix. Both arms close when the predicate reads the DECLARATION.
-  classFieldsOf =
-    entry:
-    builtins.filter (
-      k:
-      let
-        v = entry.${k};
-      in
-      builtins.isAttrs v && v ? imports && builtins.isList v.imports
-    ) (builtins.attrNames entry);
+  # ── THE REALIZATION PREDICATE ──
+  # ADR-0028's Rider: a delivery class realizes only on DECLARED CONTENT, never on structural
+  # shape. A key of a flat-registry aspect entry is a delivery class iff BOTH:
+  #
+  #   1. it is DECLARED `category = "class"`, read through gen-aspects' single classification
+  #      surface and never re-derived here; and
+  #   2. it CARRIES CONTENT at this entry.
+  #
+  # SHAPE IS NEVER CONSULTED FOR CLASSIFICATION, and that is the whole of the fix. The predicate
+  # this replaces asked whether the value was an attrset carrying an `imports` list, which is a
+  # shape test wearing content's clothes. It read clean on the contentless arm only because
+  # gen-aspects renders a declared-but-unset class as `null` rather than fabricating an empty
+  # deferredModule — a representation choice in ANOTHER library, so the Rider was discharged by
+  # coincidence and guarded by a tripwire rather than held by construction. And on a second arm it
+  # was simply wrong: a key declared `category = "channel"` rides its value VERBATIM, so a channel
+  # carrying a module — the cross-framework exchange payload the category exists for — was
+  # projected as a delivery class and had its terminal called. A facet declared with a permissive
+  # option type does the same. Limb 1 closes both; limb 2 closes the contentless arm independently
+  # of how gen-aspects chooses to represent absence.
+  deliveryClassesOf =
+    cnf: entry:
+    builtins.filter (k: aspects.keyCategory cnf k == "class" && hasContent entry.${k}) (
+      builtins.attrNames entry
+    );
+
+  # LIMB 2. `null` is gen-aspects' representable absence for a declared-but-unset class. The
+  # attrset arm is the FABRICATED EMPTY deferredModule — a module carrying nothing, which is the
+  # state the Rider's hazard turns on and the one the surrounding suite could never exhibit. The
+  # test is on the whole key set, not on `imports` alone, so a module that carries a definition
+  # beside an empty `imports` still counts as content.
+  hasContent =
+    v: v != null && !(builtins.isAttrs v && builtins.attrNames v == [ "imports" ] && v.imports == [ ]);
+
+  # THE DECLARATION INPUT'S ABSENCE IS A REFUSAL, and the KEY-level absence is not — the two go
+  # opposite ways and collapsing them is the harmful reading. Constructed with no category source
+  # this surface has nothing to read a declaration from, and the only thing left to fall back on is
+  # the shape test being removed, so it refuses by name. A KEY whose category is `null` is the
+  # ordinary, ubiquitous state of a nested aspect — gen-aspects documents `null` as its answer for
+  # an unregistered key and a consumer's typo gate is built on exactly that — so an undeclared key
+  # is simply not a delivery class and nothing throws. The refusal that IS owed for an unrecognised
+  # key already exists upstream, at schema construction, and duplicating it here would throw on
+  # every nested aspect in the corpus.
+  requireCnf =
+    cnf:
+    if cnf != null then
+      cnf
+    else
+      throw "gen-delivery: project: no category source — `cnf` is required and has no default. The realization predicate reads the key-category declaration; with none it could only fall back to a structural shape test.";
 
   # `dedup` — order-preserving unique over a string list, builtins-only (listToAttrs collapses dups).
   dedup =
@@ -90,7 +121,7 @@ let
   #   { <node> = { bindings = { node = <resolved instance>; }; classes = { <class> = [ <deferredModule> ]; }; }; }
   # PURE — no nixpkgs; the deferredModules stay unforced (opaque) until the terminal imports them.
   projectNodes =
-    selectHosts: values: registry:
+    cnf: selectHosts: values: registry:
     let
       nodes = selectHosts values;
       # `selectHosts` is caller-supplied; a non-attrset result would die inside `mapAttrs` as an
@@ -106,7 +137,7 @@ let
         _nodeName: inst:
         let
           memberAspects = builtins.filter (a: registry ? ${a}) (inst.aspects or [ ]);
-          classNames = dedup (builtins.concatMap (a: classFieldsOf registry.${a}) memberAspects);
+          classNames = dedup (builtins.concatMap (a: deliveryClassesOf cnf registry.${a}) memberAspects);
           collectClass =
             class:
             builtins.concatMap (
@@ -114,7 +145,7 @@ let
               let
                 entry = registry.${a};
               in
-              if builtins.elem class (classFieldsOf entry) then [ entry.${class} ] else [ ]
+              if builtins.elem class (deliveryClassesOf cnf entry) then [ entry.${class} ] else [ ]
             ) memberAspects;
         in
         {
@@ -137,13 +168,23 @@ let
     {
       # The resolved config VALUES of the caller's own evaluation.
       values,
+      # THE DECLARATION INPUT — the caller's own `mkAspectSchema` argument, arriving BESIDE the
+      # values rather than through them. `null` is not a default: it is the absent state, and
+      # `requireCnf` refuses it by name. Absence here is a decision, and a defaulted category
+      # source would silently degrade the predicate to the shape test being removed.
+      cnf ? null,
       # `values → { <node> = instance; }` — names which resolved attrset holds the node instances.
       selectHosts ? (v: v.hosts or { }),
     }:
     let
+      # Forced by the `seq` below rather than only where the predicate reads it. A registry with no
+      # member aspects never reaches the predicate at all, so a lazy refusal would let the surface
+      # be CONSTRUCTED with no category source and stay silent until some later fixture happened to
+      # have content — which is a refusal that fires on the size of the input.
+      declaration = requireCnf cnf;
       registry = if values ? aspects then aspects.flatten values.aspects else { };
     in
-    {
+    builtins.seq declaration {
       # The FLAT aspect registry (keyed by aspect path): each entry carries its per-class
       # deferredModule fields. The deferredModules are inspectable but unforced, so class bodies
       # cross into a target's evaluation unevaluated. Absent an `aspects` surface, this is empty.
@@ -151,7 +192,7 @@ let
 
       # The per-node build projection — a node-keyed reshape of the flat registry, driven by each
       # node's `aspects` membership. This is what the terminal builds from.
-      nodes = projectNodes selectHosts values registry;
+      nodes = projectNodes declaration selectHosts values registry;
     };
 
   # `realize` — the terminal registry fold. PURE (builtins only, no nixpkgs). It turns a `project`
