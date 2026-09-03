@@ -45,13 +45,17 @@ per-node fold instead, the check would fire on the size of the input.
 
 ## traps and measured facts
 
+<!-- gen-citations:begin -->
+
 |                                                                                                                                                                                                                                                                                                                                              |                                             |
 | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
 | **`deepSeq` does not evaluate a class body.** The rendered class value is `{ imports = [ { _file; imports = [ <lambda> ]; } ]; }` and a lambda is already in WHNF. A laziness cell built on `deepSeq` measures nothing; the control must **apply** the body                                                                                  | `ci/tests/class-content.nix`                |
 | **A bare facet declaration never reaches the entry.** `category = "facet"` with no `option`/`module` in its keySemantics adds nothing under the key name, so a probe using the bare form reads a FALSE ABSENCE. Declared WITH a permissive `option`, a facet does appear at the entry's top level and the old structural predicate admits it | measured at `gen-aspects 29fc7cc`           |
-| **import-tree skips any path whose basename starts with `_`.** A cell file named `_x.nix` is collected by nothing and its absence reads as a pass                                                                                                                                                                                            | caught by a seeded-failure control          |
+| **import-tree skips any path whose basename starts with `_`.** A cell file named \_x.nix is collected by nothing and its absence reads as a pass                                                                                                                                                                                             | caught by a seeded-failure control          |
 | **`checks.default` cannot host an `expectedError` cell.** The batch asserter forces every `expr` unconditionally, so a throwing cell with no `expected` CRASHES the gate instead of failing it                                                                                                                                               | `ci/tests-error.nix`, on `flake.testsError` |
 | **A declared class with content is `{ imports = [ … ]; }` — exactly one key.** `hasContent` tests the whole key set rather than `imports` alone, so a module carrying a definition beside an empty `imports` still counts as content                                                                                                         | `lib/default.nix`                           |
+
+<!-- gen-citations:end -->
 
 ## what the suites hold
 
