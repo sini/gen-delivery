@@ -97,3 +97,24 @@ cd ci && nix fmt -- --ci
 
 `--ci` fails on change *after* writing the change, so a first run that reports `1 changed` has
 already applied it — re-run and read `0 changed`.
+
+## Drift check
+
+`nix eval --json .#lib --apply builtins.attrNames` — the form 23 sibling sheets publish —
+**aborts here**. The library is a function of `{ algebra, aspects }`, so the flake's `lib` output is
+a lambda and the apply reads *"expected a set but found a function"*. The check has to supply a
+substrate, and it supplies the ACCEPTANCE RUN's own — `ci/flake.nix`'s `gen-algebra` and
+`gen-aspects`, resolved through `ci/flake.lock` — rather than pinning a second one, which would make
+the checked surface a different construction from the tested one. There is no `ci/repl.nix` here, so
+the splice is inline; resolving a local flake from an expression is what `--impure` pays for. From
+the repository root:
+
+```sh
+nix eval --json --impure --expr 'let ci = builtins.getFlake (toString ./ci); in builtins.attrNames (import ./lib { algebra = ci.inputs.gen-algebra.lib; aspects = ci.inputs.gen-aspects.lib; })'
+```
+
+Current output (verbatim):
+
+```json
+["defaultLayerOrder","project","realize"]
+```
