@@ -52,15 +52,25 @@ let
       )
     ) srcs;
 
+  # walk : string -> path -> [ { name; path; } ], `name` being `prefix` extended by the entry's
+  # position in the tree. The label a red CI prints is the whole product of a failing cell, and a
+  # `toString` of the path value renders the store copy the flake is evaluated from
+  # (`/nix/store/<hash>-source/lib/default.nix`) — a file no reader can open in their own checkout,
+  # whose hash moves on any unrelated edit. Same shape as gen-link's and gen-graph's, deliberately.
   walk =
-    dir:
+    prefix: dir:
     lib.concatLists (
       lib.mapAttrsToList (
-        name: type:
+        entry: type:
         if type == "directory" then
-          walk (dir + "/${name}")
-        else if lib.hasSuffix ".nix" name then
-          [ (dir + "/${name}") ]
+          walk "${prefix}${entry}/" (dir + "/${entry}")
+        else if lib.hasSuffix ".nix" entry then
+          [
+            {
+              name = "${prefix}${entry}";
+              path = dir + "/${entry}";
+            }
+          ]
         else
           [ ]
       ) (builtins.readDir dir)
@@ -70,9 +80,9 @@ let
   # cell has to speak about the RAW text, which is only a value once the strip stops happening inside
   # the read; and `sources` is then a total per-element function of `rawSources` — the name passes
   # through, the code is the strip of the text — so pinning either one pins the other.
-  rawSources = map (p: {
-    name = toString p;
-    text = builtins.readFile p;
+  rawSources = map (e: {
+    inherit (e) name;
+    text = builtins.readFile e.path;
   }) scanned;
 
   sources = map (s: {
@@ -98,7 +108,7 @@ let
     "{ lib,"
   ];
 
-  scanned = walk libDir;
+  scanned = walk "lib/" libDir;
 
   violations = lib.concatMap (
     src: map (tok: "${src.name}: '${tok}'") (lib.filter (tok: lib.hasInfix tok src.code) forbidden)
