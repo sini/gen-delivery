@@ -28,8 +28,8 @@ A **delivery class** is content declared on an aspect, collected per node, and h
 that turns it into an artifact. Two things have to be true of the surface that does this, and
 neither was true of the code it replaces.
 
-**The realization predicate must read the DECLARATION.** ADR-0028's Rider rules that a delivery
-class realizes only on declared content, never on structural shape. The predecessor asked whether a
+**The realization predicate must read the DECLARATION.** A delivery class realizes only on
+declared content, never on structural shape. The predecessor asked whether a
 key's value was an attrset carrying an `imports` list — a shape test. It read clean on the
 contentless arm only because gen-aspects happens to render a declared-but-unset class as `null`
 rather than fabricating an empty deferred module: a representation choice in *another library*,
@@ -86,7 +86,7 @@ value, published so a consumer can read it rather than only override it.
 **The order is TOTAL over the layers, in both directions, and both refuse by name.** Naming a layer
 that does not exist refuses; so does omitting one. An omitted layer is a *deleted contribution*, not
 a shorter list — drop `projection` and `bindings.node`, which the contract documents as always
-present, silently vanishes and the terminal that reads it fails deep inside the target. ADR-0029's
+present, silently vanishes and the terminal that reads it fails deep inside the target. The
 precondition is a declared *total* order, and one direction guarded is not that.
 
 The **global** and **refinement** layers are separate inputs, and that is a fix rather than a shape.
