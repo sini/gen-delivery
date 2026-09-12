@@ -37,7 +37,10 @@ let
     ];
   };
 
-  projected = genDelivery.project { inherit (fixture) values cnf; };
+  projected = genDelivery.project {
+    inherit (fixture) values cnf;
+    selectHosts = v: v.hosts;
+  };
 
   # A terminal that reports the shape of what it was handed WITHOUT evaluating any of it.
   countingTerminal =

@@ -32,6 +32,10 @@ let
     + "The realization predicate reads the key-category declaration; with none it could only fall "
     + "back to a structural shape test.";
 
+  noNodeSelector =
+    "gen-delivery: project: no node selector — `selectHosts` is required and has no default. It "
+    + "names WHICH resolved attrset of the caller's values holds the node instances.";
+
   duplicateLayer =
     "gen-delivery: realize: layerOrder repeats contribution layer(s) projection — a sequence with "
     + "duplicates is not an order, and the LAST occurrence would decide, silently inverting the "
@@ -45,6 +49,20 @@ in
     test-missing-category-source-names-the-input = {
       expr = (genDelivery.project { values = { }; }).aspects;
       expectedError.msg = exactly missingCategorySource;
+    };
+
+    # THE MISSING NODE SELECTOR — the root cause of the hub's silent empty. A default here
+    # (`v: v.hosts or { }`) turned a registry spelled anything but `hosts` into a well-typed empty
+    # one; the formal now has no default and names itself. `cnf.keySemantics = { }` is LOAD-BEARING,
+    # not decoration: the declaration must be present or `requireCnf` fires first under `project`'s
+    # `seq` and this cell would assert the wrong refusal while still reading green.
+    test-missing-node-selector-names-the-formal = {
+      expr =
+        (genDelivery.project {
+          values = { };
+          cnf.keySemantics = { };
+        }).nodes;
+      expectedError.msg = exactly noNodeSelector;
     };
 
     # The caller-supplied selector must return the instance registry. A non-attrset result would

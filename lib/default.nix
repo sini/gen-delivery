@@ -206,7 +206,11 @@ let
       # source would silently degrade the predicate to the shape test being removed.
       cnf ? null,
       # `values → { <node> = instance; }` — names which resolved attrset holds the node instances.
-      selectHosts ? (v: v.hosts or { }),
+      # `null` is the ABSENT state, not a default. A default here (`v: v.hosts or { }`) bakes a
+      # DOMAIN word into this surface and converts a missing registry into a well-typed empty one,
+      # which is the vanishing ADR-0035 removes: any registry not spelled `hosts` projected `{ }`
+      # with no diagnostic.
+      selectHosts ? null,
     }:
     let
       # Forced by the `seq` below rather than only where the predicate reads it. A registry with no
@@ -214,6 +218,18 @@ let
       # be CONSTRUCTED with no category source and stay silent until some later fixture happened to
       # have content — which is a refusal that fires on the size of the input.
       declaration = requireCnf cnf;
+      # Forced where `nodes` is read, NOT under the `seq` below, and that is the criterion the
+      # `declaration` comment above states rather than an omission: a refusal must not fire on the
+      # SIZE of the input. `cnf` is read only by the predicate, so an empty registry would never
+      # reach it — hence the eager force there. `selector`'s absence is independent of every input;
+      # it throws iff the formal was omitted, on any `values` whatever, so the criterion is already
+      # satisfied at `nodes` and forcing it a level up would only couple an `aspects`-only caller to
+      # a node selector it never reads.
+      selector =
+        if selectHosts != null then
+          selectHosts
+        else
+          throw "gen-delivery: project: no node selector — `selectHosts` is required and has no default. It names WHICH resolved attrset of the caller's values holds the node instances.";
       registry = if values ? aspects then aspects.flatten values.aspects else { };
     in
     builtins.seq declaration {
@@ -224,7 +240,7 @@ let
 
       # The per-node build projection — a node-keyed reshape of the flat registry, driven by each
       # node's `aspects` membership. This is what the terminal builds from.
-      nodes = projectNodes declaration selectHosts values registry;
+      nodes = projectNodes declaration selector values registry;
     };
 
   # `realize` — the terminal registry fold. PURE (builtins only, no nixpkgs). It turns a `project`

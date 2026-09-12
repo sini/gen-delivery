@@ -65,7 +65,10 @@ let
 
   # `project` flattens `values.aspects` through gen-aspects; the registry above is already flat, and
   # `flatten` over a flat tree is the identity on it, so the fixture reaches the predicate unchanged.
-  projected = genDelivery.project { inherit values cnf; };
+  projected = genDelivery.project {
+    inherit values cnf;
+    selectHosts = v: v.hosts;
+  };
 
   tripwire = { name, ... }: throw "gen-delivery test: terminal invoked for `${name}`";
   realizedTripwire = genDelivery.realize {

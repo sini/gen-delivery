@@ -41,7 +41,10 @@ let
     ];
   };
 
-  projected = genDelivery.project { inherit (fixture) values cnf; };
+  projected = genDelivery.project {
+    inherit (fixture) values cnf;
+    selectHosts = v: v.hosts;
+  };
 
   # A reflecting terminal — the realized shape is assertable without forcing a class body.
   dataTerminal = { name, ... }: { inherit name; };
