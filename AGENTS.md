@@ -1,5 +1,7 @@
 # gen-delivery agent sheet
 
+> **Library class: reference-grade.** Deletion requires a domain argument — wrong abstraction, subsumption by another construct, or theory-unsoundness; a usage count is inadmissible as a deletion ground (P7, 2026-08-17).
+
 The delivery-class realization surface. Zero root inputs; substrate injected; nixpkgs-lib-free.
 `lib/default.nix` is the whole library — one file, because the row this executes calls the
 projection and the fold **one construct** and they are one: the realization predicate lives in the
