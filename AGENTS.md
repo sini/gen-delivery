@@ -9,7 +9,10 @@ first half and the fold that trusts it lives in the second.
 
 ## published surface
 
-`{ algebra, aspects }` in; `{ project, realize, defaultLayerOrder }` out.
+`{ algebra, aspects }` in; `{ project, realize, defaultLayerOrder }` out. Root `default.nix`'s
+`wire ? args: import ./lib args` formal is what hands this `{ algebra, aspects }` attrset to the
+library; overriding it is how a cell reads the shim's own formal-to-path map without a fetch or a
+restated path.
 
 |                     | signature                                                                                                                                        |
 | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
