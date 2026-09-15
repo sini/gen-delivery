@@ -13,9 +13,16 @@
   # repository is ./ci/flake.lock, and it is what the acceptance run uses.
   #
   # The test runner lives in ./ci, which is a separate flake.
-  outputs =
-    { ... }:
-    {
-      lib = import ./lib;
-    };
+  #
+  # ★ THE FLAKE OUTPUT IS THE ROOT, PUBLISHED UNAPPLIED. `./.` and `./lib` were two independent
+  # constructions of one value and so free to disagree; there is ONE construction site now, and the
+  # two entry paths differ only in who supplies the arguments. A flake can only pass `inputs.<dep>`
+  # for a dependency it DECLARES, and this one declares none — so publishing the root unapplied is
+  # what lets the consumer supply every argument instead of dropping the edge through to this
+  # repository's own ci lock on the flake path. The hub applies this output verbatim
+  # (`(input "gen-delivery").lib { algebra; aspects; }`), so an APPLIED output here would abort every
+  # hub evaluation with `attempt to call something which is not a function but a set`.
+  outputs = _: {
+    lib = import ./.;
+  };
 }
