@@ -44,12 +44,14 @@ in
     in
     if builtins.isFunction v then v { } else v,
   # `wire` IS THE THIRD SEAM, AND IT IS WHAT MAKES THE ENTRY SUITE'S HERMETIC CELL EXPRESSIBLE AT
-  # ALL. Nix publishes WHETHER a formal has a default and never WHAT it is, so the only place a
-  # formal NAME and its resolved PATH are both in scope is this file's argument to `./lib`. `wire`
-  # exposes exactly that attrset and nothing else: a cell injecting `dep = segs: segs` alongside
-  # `wire = args: args` reads this shim's own formal-to-path map, with nothing fetched and no path
-  # restated by hand. It is a widening and so breaks no caller — there is no `...` here, and no
-  # caller passes a name this root does not declare.
+  # ALL. The only place a formal NAME and its resolved PATH are both in scope is this file's
+  # argument TO `wire` — Nix publishes WHETHER a formal has a default and never WHAT it is. `wire`
+  # RECEIVES that attrset, not `./lib`: what `./lib` sees is whatever `wire` does with it, and the
+  # default below, `args: import ./lib args,`, is the only reason the two coincide here. A cell
+  # injecting `dep = segs: segs` alongside `wire = args: args` therefore reads this shim's own
+  # formal-to-path map, with nothing fetched and no path restated by hand. It is a widening and so
+  # breaks no caller — there is no `...` here, and no caller passes a name this root does not
+  # declare.
   wire ? args: import ./lib args,
   algebra ? inputs.gen-algebra or (dep [ "gen-algebra" ]),
   aspects ? inputs.gen-aspects or (dep [ "gen-aspects" ]),
