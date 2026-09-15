@@ -10,9 +10,11 @@ first half and the fold that trusts it lives in the second.
 ## published surface
 
 `{ algebra, aspects }` in; `{ project, realize, defaultLayerOrder }` out. Root `default.nix`'s
-`wire ? args: import ./lib args` formal is what hands this `{ algebra, aspects }` attrset to the
-library; overriding it is how a cell reads the shim's own formal-to-path map without a fetch or a
-restated path.
+`wire ? { deps, resolve }: import ./lib deps` formal is what hands this `{ algebra, aspects }`
+attrset to the library as `deps`, and it is also the shim's only outward channel — a formal is an
+INPUT channel and cannot carry a value out, so the lock-parameterised `follows` resolver rides out on
+the same record. Overriding `wire` is how a cell reads the shim's own formal-to-path map AND its own
+resolver without a fetch, a restated path or a transcribed fold.
 
 |                     | signature                                                                                                                                        |
 | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
