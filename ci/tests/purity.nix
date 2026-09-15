@@ -113,6 +113,20 @@ let
   violations = lib.concatMap (
     src: map (tok: "${src.name}: '${tok}'") (lib.filter (tok: lib.hasInfix tok src.code) forbidden)
   ) sources;
+
+  # The live counterpart to `forbidden`: the name this library reaches for where a tether would reach
+  # for nixpkgs. `algebra` is one of the two substrates gen-delivery takes as injected values, and it
+  # is what its source names in place of a nixpkgs call.
+  #
+  # ★ THE CEILING, because this library's scanned subject is ONE file. In a multi-file library the
+  # expected list is a PROPER SUBSET of the manifest and that is what gives it teeth — a read
+  # returning one fixed text for every file lands outside the list either way. Here the subject is
+  # `lib/default.nix` alone, so no proper subset exists and the cell bounds a narrower thing: a read
+  # that returned empty, or any constant NOT naming the substrate, reds it; a constant that happens
+  # to name the substrate passes. That residue is named rather than removed, and it closes if this
+  # library ever grows a second module.
+  liveToken = "algebra";
+  liveReads = map (src: src.name) (lib.filter (src: lib.hasInfix liveToken src.code) sources);
 in
 {
   flake.tests.purity = {
@@ -120,8 +134,35 @@ in
       expr = violations;
       expected = [ ];
     };
+    # What the cell above is a statement ABOUT. Its `[ ]` is produced just as readily by a scan that
+    # reads the wrong tree, or no tree, as by a library that is clean, and neither the two controls
+    # below nor a guard on the source list's SIZE can tell those apart — the first speak about a
+    # planted literal or a count, and a count answers how many rather than which. Disconnection is an
+    # IDENTITY defect: a scan repointed at some other directory of `.nix` files is non-empty, has
+    # non-empty content, and reports the invariant clean over a set containing none of the library.
+    # So membership is written down as the label list itself. Asserting the list also makes a second
+    # library module arrive as a RED rather than being absorbed silently, which is the point — the
+    # scope of an invariant is a declared surface, not a default. The two root entries are NOT
+    # members: this suite's Scope is `lib/`, and the manifest states that rather than widening it.
+    test-scan-subject-is-the-library-tree = {
+      expr = map (s: s.name) sources;
+      expected = [ "lib/default.nix" ];
+    };
+
+    # And that the label carries its file's text. The manifest above pins membership and is silent on
+    # content: a read that handed the entry one fixed string would satisfy it exactly, and a live
+    # `lib.types.str` sitting in the real library file would pass through all of the other cells here
+    # at exit 0. This is the same shape as the manifest — an exact list, not a count — asked of a
+    # token that is genuinely present rather than genuinely absent, under the ceiling stated at
+    # `liveToken`.
+    test-scan-reads-are-live = {
+      expr = liveReads;
+      expected = [ "lib/default.nix" ];
+    };
+
     # CONTROL — the scan reached files at all. An empty `violations` over an empty file list is a
-    # clean read of nothing, and it is indistinguishable from the real thing.
+    # clean read of nothing, and it is indistinguishable from the real thing. It is a CARDINALITY
+    # statement and so cannot say which files those were; the manifest above is what carries that.
     test-control-scan-reached-the-library = {
       expr = builtins.length scanned > 0;
       expected = true;
