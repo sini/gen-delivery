@@ -49,19 +49,22 @@
         }:
         let
           schema = aspects.mkAspectSchema cnf;
-          hostSchema =
-            { config, ... }:
-            {
-              options.schema = genSchema.mkSchemaOption { };
-              options.hosts = genSchema.mkInstanceRegistry config.schema.host { };
-              config.schema.host = {
-                options.addr = genMerge.mkOption { type = genMerge.types.str; };
-                options.aspects = genMerge.mkOption {
-                  type = genMerge.types.listOf genMerge.types.str;
-                  default = [ ];
+          hostKinds = genSchema.evalSchema {
+            modules = [
+              {
+                config.schema.host = {
+                  options.addr = genMerge.mkOption { type = genMerge.types.str; };
+                  options.aspects = genMerge.mkOption {
+                    type = genMerge.types.listOf genMerge.types.str;
+                    default = [ ];
+                  };
                 };
-              };
-            };
+              }
+            ];
+          };
+          hostSchema = {
+            options.hosts = genSchema.mkInstanceRegistry hostKinds.host { };
+          };
           evaluated = genMerge.evalModuleTree {
             modules = [
               { options.aspects = schema.mkAspectOption { }; }
