@@ -110,9 +110,16 @@ let
 
   scanned = walk "lib/" libDir;
 
-  violations = lib.concatMap (
-    src: map (tok: "${src.name}: '${tok}'") (lib.filter (tok: lib.hasInfix tok src.code) forbidden)
-  ) sources;
+  # scan : [ { name; code; } ] -> [ "file: 'tok'" ]. Factored out of `violations` so the detector
+  # cell below runs THE SAME call over the same source list with one entry appended, rather than a
+  # second copy of the predicate that could drift from this one.
+  scan =
+    srcs:
+    lib.concatMap (
+      src: map (tok: "${src.name}: '${tok}'") (lib.filter (tok: lib.hasInfix tok src.code) forbidden)
+    ) srcs;
+
+  violations = scan sources;
 
   # The live counterpart to `forbidden`: the name this library reaches for where a tether would reach
   # for nixpkgs. `algebra` is one of the two substrates gen-delivery takes as injected values, and it
@@ -167,13 +174,30 @@ in
       expr = builtins.length scanned > 0;
       expected = true;
     };
-    # CONTROL — the predicate can fire. A forbidden token planted in a string the scan actually
-    # reads is reported, so a zero above is a discrimination rather than a broken matcher.
-    test-control-predicate-fires-on-a-planted-token = {
-      expr = lib.filter (tok: lib.hasInfix tok "a line naming lib.types in it") forbidden;
+    # The detector has teeth, and it grows them on the real subject: the scan runs over exactly the
+    # source list the cell above asserts, with one synthetic entry appended. So the firing is proven by
+    # the same call that reports the tree clean, and the expectation states both halves at once — the
+    # library contributes nothing and the planted tether contributes precisely this.
+    #
+    # The expectation is the violation LIST, not merely that one was produced: a detector that fires on
+    # the wrong token, or whose `file: 'tok'` message has decayed into something a reader cannot act on
+    # off a red CI, is broken in the way that matters and a bare non-emptiness check would pass it. The
+    # synthetic entry is never written to disk, and its label is bracketed so it cannot be read as one
+    # of the repo-root-relative paths it now sits beside. Its trailing comment names `nixpkgs`, which
+    # the strip removes — so this cell also fails if the strip stops running.
+    test-detector-catches-injected-violation = {
+      expr = scan (
+        sources
+        ++ [
+          {
+            name = "<injected>";
+            code = stripComments "  foo = lib.types.str; # comment mentioning nixpkgs is stripped";
+          }
+        ]
+      );
       expected = [
-        "lib."
-        "lib.types"
+        "<injected>: 'lib.'"
+        "<injected>: 'lib.types'"
       ];
     };
 
