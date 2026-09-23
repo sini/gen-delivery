@@ -18,7 +18,7 @@ resolver without a fetch, a restated path or a transcribed fold.
 
 |                     | signature                                                                                                                                        |
 | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `project`           | `{ values, cnf ? null, selectHosts ? (v: v.hosts or {}) } -> { aspects, nodes }`                                                                 |
+| `project`           | `{ values, cnf ? null, selectNodes ? null } -> { aspects, nodes }`                                                                               |
 | `realize`           | `{ projected, terminals, bindings ? {}, refinements ? {}, layerOrder ? defaultLayerOrder, extraModules ? {} } -> { <class>.<node> = artifact; }` |
 | `defaultLayerOrder` | `[ "projection" "global" "refinement" ]`                                                                                                         |
 

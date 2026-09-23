@@ -67,7 +67,7 @@ let
   # `flatten` over a flat tree is the identity on it, so the fixture reaches the predicate unchanged.
   projected = genDelivery.project {
     inherit values cnf;
-    selectHosts = v: v.hosts;
+    selectNodes = v: v.hosts;
   };
 
   tripwire = { name, ... }: throw "gen-delivery test: terminal invoked for `${name}`";

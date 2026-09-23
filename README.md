@@ -46,7 +46,7 @@ chain whose only statement anywhere was a gloss in a header comment. It was comp
 
 |                                                                                                        |                                                          |
 | ------------------------------------------------------------------------------------------------------ | -------------------------------------------------------- |
-| `project { values, cnf, selectHosts ? … }`                                                             | the flat aspect registry + the per-node build projection |
+| `project { values, cnf, selectNodes }`                                                                 | the flat aspect registry + the per-node build projection |
 | `realize { projected, terminals, bindings ? {}, refinements ? {}, layerOrder ? …, extraModules ? {} }` | class-major artifacts, `{ <class>.<node> = artifact; }`  |
 | `defaultLayerOrder`                                                                                    | the contribution-order declaration, readable             |
 
@@ -120,19 +120,21 @@ resolved rather than relocated.
 - **`host` → `node`.** `node` is ruled substrate vocabulary: a position with attributes and incident
   labelled edges, of which a registry instance is a view. `host` is attested in the archived corpus
   only in the unrelated DSL-embedding sense ("host language"), so its presence there is not support.
+
 - **`nodes` → `extent`.** The old name collided with the ruled term while meaning something else:
   the field holds realized *artifacts keyed by node*. The extent of a predicate is the set of
   objects of the universe for which it holds (Gelfond & Lifschitz 1988, stable model semantics), and
   realization is a predicate. **Precisely:** the field is not the extent — its *spine* is. Naming a
   container after its index set would mirror the error being corrected.
+
 - **`osConfig` → `passthrough`.** No substrate term should exist for it. `osConfig` is a
   nixpkgs/home-manager identifier, correct as surface vocabulary *at the surface* and wrong as a
   pinned field in a substrate-facing contract. The contract carries one target-owned channel, opaque
   here, whose keys are the consumer's own. The name is minted from the ruling's own words and
   carries no theory citation.
 
-`selectHosts` deliberately keeps its name: the override merge law's REPLACE clause names that formal
-and the law does not move with this surface.
+- **`selectHosts` → `selectNodes`.** The same substitution applied to the formal that selects the
+  node instances; `select` is the verb gen-graph's `selectEdges` already carries.
 
 `modules`, `bindings` and `name` are out of scope: the module system's own vocabulary, the
 substrate's relation vocabulary, and the member's key.

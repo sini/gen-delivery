@@ -33,7 +33,7 @@ let
     + "back to a structural shape test.";
 
   noNodeSelector =
-    "gen-delivery: project: no node selector — `selectHosts` is required and has no default. It "
+    "gen-delivery: project: no node selector — `selectNodes` is required and has no default. It "
     + "names WHICH resolved attrset of the caller's values holds the node instances.";
 
   duplicateLayer =
@@ -52,7 +52,7 @@ in
     };
 
     # THE MISSING NODE SELECTOR — the root cause of the hub's silent empty. A default here
-    # (`v: v.hosts or { }`) turned a registry spelled anything but `hosts` into a well-typed empty
+    # (`v: v.<name> or { }`) turned a registry spelled anything but `<name>` into a well-typed empty
     # one; the formal now has no default and names itself. `cnf.keySemantics = { }` is LOAD-BEARING,
     # not decoration: the declaration must be present or `requireCnf` fires first under `project`'s
     # `seq` and this cell would assert the wrong refusal while still reading green.
@@ -69,14 +69,14 @@ in
     # otherwise die inside `mapAttrs` as an anonymous "expected a set", naming neither the surface
     # nor the argument that produced it. The declaration IS present here, so the two refusals are
     # reachable independently rather than one shadowing the other.
-    test-select-hosts-non-attrset-refuses-by-name = {
+    test-select-nodes-non-attrset-refuses-by-name = {
       expr =
         (genDelivery.project {
           values = { };
           cnf.keySemantics = { };
-          selectHosts = _: "not an attrset";
+          selectNodes = _: "not an attrset";
         }).nodes;
-      expectedError.msg = exactly "gen-delivery: project: selectHosts must return an attrset of node instances ({ <node> = <instance>; }), got string";
+      expectedError.msg = exactly "gen-delivery: project: selectNodes must return an attrset of node instances ({ <node> = <instance>; }), got string";
     };
 
     # A DUPLICATED layer in `layerOrder`. The seeded shape keeps every declared layer present and

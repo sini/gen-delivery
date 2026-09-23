@@ -17,7 +17,7 @@ let
   # set, so the two differ on the content axis and on nothing else.
   #
   # TWO node instances in the fixture's own `hosts` registry — the registry's name is the
-  # consumer's, which is why `selectHosts` still names it — and both are members of `web`, so
+  # consumer's, which is why `selectNodes` still names it — and both are members of `web`, so
   # "realizes no node" and "realizes EVERY member node" are both claims over a non-empty domain.
   fixture = mkFixture {
     cnf = {
@@ -43,7 +43,7 @@ let
 
   projected = genDelivery.project {
     inherit (fixture) values cnf;
-    selectHosts = v: v.hosts;
+    selectNodes = v: v.hosts;
   };
 
   # A reflecting terminal — the realized shape is assertable without forcing a class body.

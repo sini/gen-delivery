@@ -55,6 +55,10 @@
 #               framework's instance named by the consumer. The surface never reads inside it. The
 #               name is minted from the ruling's own words and carries no theory citation.
 #
+#   selectNodes was `selectHosts`, the same substitution as `node` above applied to the formal
+#               that selects the node instances; `select` is the verb gen-graph's `selectEdges`
+#               already carries.
+#
 # `modules`, `bindings` and `name` are out of scope for the rename: the first is the module
 # system's own vocabulary, the second is already the substrate's relation vocabulary, and the third
 # is the member's key rather than a framework term.
@@ -146,23 +150,22 @@ let
 
   # `projectNodes` — the node-keyed reshape of the FLAT aspect registry. For each node instance,
   # gather the deferredModules of each class across the aspects the node declares membership in
-  # (`node.aspects`). `selectHosts` names WHICH resolved attrset holds the node instances — a nested
-  # registry layout (`fleet.hosts`) would otherwise project empty under a hardcoded `values.hosts`
-  # read. It keeps its published name: the override merge law's REPLACE clause names this formal,
-  # and that law does not move with this surface. Yields
+  # (`node.aspects`). `selectNodes` names WHICH resolved attrset holds the node instances — a nested
+  # registry layout (`fleet.bobbins`) would otherwise project empty under a hardcoded top-level
+  # read. Yields
   #   { <node> = { bindings = { node = <resolved instance>; }; classes = { <class> = [ <deferredModule> ]; }; }; }
   # PURE — no nixpkgs; the deferredModules stay unforced (opaque) until the terminal imports them.
   projectNodes =
-    cnf: selectHosts: values: registry:
+    cnf: selectNodes: values: registry:
     let
-      nodes = selectHosts values;
-      # `selectHosts` is caller-supplied; a non-attrset result would die inside `mapAttrs` as an
+      nodes = selectNodes values;
+      # `selectNodes` is caller-supplied; a non-attrset result would die inside `mapAttrs` as an
       # anonymous "expected a set" — name the surface, the arg, and the contract instead.
       _nodesCheck =
         if builtins.isAttrs nodes then
           null
         else
-          throw "gen-delivery: project: selectHosts must return an attrset of node instances ({ <node> = <instance>; }), got ${builtins.typeOf nodes}";
+          throw "gen-delivery: project: selectNodes must return an attrset of node instances ({ <node> = <instance>; }), got ${builtins.typeOf nodes}";
     in
     builtins.seq _nodesCheck (
       builtins.mapAttrs (
@@ -206,11 +209,11 @@ let
       # source would silently degrade the predicate to the shape test being removed.
       cnf ? null,
       # `values → { <node> = instance; }` — names which resolved attrset holds the node instances.
-      # `null` is the ABSENT state, not a default. A default here (`v: v.hosts or { }`) bakes a
+      # `null` is the ABSENT state, not a default. A default here (`v: v.<name> or { }`) bakes a
       # DOMAIN word into this surface and converts a missing registry into a well-typed empty one,
-      # which is the vanishing ADR-0035 removes: any registry not spelled `hosts` projected `{ }`
+      # which is the vanishing ADR-0035 removes: any registry not spelled `<name>` projected `{ }`
       # with no diagnostic.
-      selectHosts ? null,
+      selectNodes ? null,
     }:
     let
       # Forced by the `seq` below rather than only where the predicate reads it. A registry with no
@@ -226,10 +229,10 @@ let
       # satisfied at `nodes` and forcing it a level up would only couple an `aspects`-only caller to
       # a node selector it never reads.
       selector =
-        if selectHosts != null then
-          selectHosts
+        if selectNodes != null then
+          selectNodes
         else
-          throw "gen-delivery: project: no node selector — `selectHosts` is required and has no default. It names WHICH resolved attrset of the caller's values holds the node instances.";
+          throw "gen-delivery: project: no node selector — `selectNodes` is required and has no default. It names WHICH resolved attrset of the caller's values holds the node instances.";
       registry = if values ? aspects then aspects.flatten values.aspects else { };
     in
     builtins.seq declaration {
