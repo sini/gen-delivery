@@ -93,7 +93,11 @@ let
   #
   #   1. it is DECLARED `category = "class"`, read through gen-aspects' single classification
   #      surface and never re-derived here; and
-  #   2. it CARRIES CONTENT at this entry.
+  #   2. it CARRIES CONTENT at this entry, read through gen-aspects' `hasClassContent`, the
+  #      companion of `keyCategory` over the class VALUE — also never re-derived here (ADR-0012
+  #      clause 2). It rejects both spellings of emptiness: `null`, gen-aspects' representable
+  #      absence for a declared-but-unset class, and the FABRICATED EMPTY deferredModule
+  #      `{ imports = [ ]; }`, the state the Rider's hazard turns on.
   #
   # SHAPE IS NEVER CONSULTED FOR CLASSIFICATION, and that is the whole of the fix. The predicate
   # this replaces asked whether the value was an attrset carrying an `imports` list, which is a
@@ -108,17 +112,9 @@ let
   # of how gen-aspects chooses to represent absence.
   deliveryClassesOf =
     cnf: entry:
-    builtins.filter (k: aspects.keyCategory cnf k == "class" && hasContent entry.${k}) (
+    builtins.filter (k: aspects.keyCategory cnf k == "class" && aspects.hasClassContent entry.${k}) (
       builtins.attrNames entry
     );
-
-  # LIMB 2. `null` is gen-aspects' representable absence for a declared-but-unset class. The
-  # attrset arm is the FABRICATED EMPTY deferredModule — a module carrying nothing, which is the
-  # state the Rider's hazard turns on and the one the surrounding suite could never exhibit. The
-  # test is on the whole key set, not on `imports` alone, so a module that carries a definition
-  # beside an empty `imports` still counts as content.
-  hasContent =
-    v: v != null && !(builtins.isAttrs v && builtins.attrNames v == [ "imports" ] && v.imports == [ ]);
 
   # THE DECLARATION INPUT'S ABSENCE IS A REFUSAL, and the KEY-level absence is not — the two go
   # opposite ways and collapsing them is the harmful reading. Constructed with no category source
