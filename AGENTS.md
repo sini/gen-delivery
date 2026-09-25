@@ -88,9 +88,16 @@ one look identical from the carriage side, because the carriage is renamed in bo
 ## running the suites
 
 ```sh
-nix-unit --flake ./ci#tests
-nix-unit --flake ./ci#testsError
+nix develop ./ci --command ci                # the suites, guarded
+nix develop ./ci --command ci --tests-error  # the error-plane cells, guarded
+nix-unit --flake ./ci#tests                  # the suites, unguarded
+nix-unit --flake ./ci#testsError             # the error-plane cells, unguarded
 ```
+
+`ci` refuses when anything under a declared read root is unknown to git — any extension or name,
+`_`-prefixed included — and the remedy is `git add` or a move. The bare `nix-unit` and
+`nix flake check` forms are unguarded: they read a git-filtered copy of the tree, so an untracked
+cell is silently absent and the run stays green.
 
 Read the exit status UNPIPED — under zsh the per-stage status of a pipeline is `$pipestatus`,
 lowercase. Count `☢️` as well as `❌`: a cell that aborts the suite is a failure, not a skip. A run

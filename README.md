@@ -153,9 +153,16 @@ substrate's relation vocabulary, and the member's key.
 ## Running the suites
 
 ```sh
-nix-unit --flake ./ci#tests        # the suites
-nix-unit --flake ./ci#testsError   # cells whose subject is an error MESSAGE
+nix develop ./ci --command ci                # the suites, guarded
+nix develop ./ci --command ci --tests-error  # cells whose subject is an error MESSAGE, guarded
+nix-unit --flake ./ci#tests                  # the suites, unguarded
+nix-unit --flake ./ci#testsError             # the error cells, unguarded
 ```
+
+`ci` refuses when anything under a declared read root is unknown to git — any extension or name,
+`_`-prefixed included — and the remedy is `git add` or a move. The bare `nix-unit` and
+`nix flake check` forms are unguarded: they read a git-filtered copy of the tree, so an untracked
+cell is silently absent and the run stays green.
 
 Read the exit status **unpiped** — under zsh a pipeline's per-stage status is `$pipestatus`,
 lowercase, and a piped read of `$?` reports the last stage instead of nix-unit.
