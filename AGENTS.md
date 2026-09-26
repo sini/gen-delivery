@@ -16,11 +16,11 @@ INPUT channel and cannot carry a value out, so the lock-parameterised `follows` 
 the same record. Overriding `wire` is how a cell reads the shim's own formal-to-path map AND its own
 resolver without a fetch, a restated path or a transcribed fold.
 
-|                     | signature                                                                                                                                        |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `project`           | `{ values, cnf ? null, selectNodes ? null } -> { aspects, nodes }`                                                                               |
-| `realize`           | `{ projected, terminals, bindings ? {}, refinements ? {}, layerOrder ? defaultLayerOrder, extraModules ? {} } -> { <class>.<node> = artifact; }` |
-| `defaultLayerOrder` | `[ "projection" "global" "refinement" ]`                                                                                                         |
+|                     | signature                                                                                                                                                                                                           |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `project`           | `{ values, cnf ? null, selectNodes ? null } -> { aspects, nodes }`                                                                                                                                                  |
+| `realize`           | `{ projected, terminals, bindings ? {}, refinements ? {}, layerOrder ? defaultLayerOrder, extraModules ? {} } -> { <class>.<node> = artifact; }`; `extraModules` is class-major, `{ <class>.<node> = [ module ]; }` |
+| `defaultLayerOrder` | `[ "projection" "global" "refinement" ]`                                                                                                                                                                            |
 
 `project.aspects` is the flat registry (`aspects.flatten values.aspects`, empty when there is no
 `aspects` surface). `project.nodes` is the per-node build projection,
@@ -50,6 +50,45 @@ The order is TOTAL over the layers: naming an unknown layer refuses, and so does
 one, because an omitted layer is a *deleted contribution* rather than a shorter list. Wired into the
 per-node fold instead, the check would fire on the size of the input.
 
+## the class discipline — `consume`'s class-discipline half, homed here
+
+`extraModules` is **CLASS-MAJOR**, `{ <class>.<node> = [ module ]; }`: an address with the output's
+own coordinate, so a terminal receives only what was addressed to its class at its node — the same
+rule `extent` obeys. Extras **supplement** a realization and never create one (ADR-0028's Rider).
+
+| limb          | carrier                                                                                                    |
+| ------------- | ---------------------------------------------------------------------------------------------------------- |
+| L1 tag        | gen-aspects' `class` key category, read through `aspects.keyCategory` — content declared under a class key |
+| L2 same-class | `realize`'s fold — a terminal is handed `classes.<its class>` only                                         |
+| L3 neutral    | the realization predicate — only `category = "class"` keys realize; a `channel` key rides verbatim         |
+| L4 crossing   | caller code whose target is a DECLARED ADDRESS, `extraModules.<to>.<node>`                                 |
+
+Every address must be a point of the realization, or it **REFUSES BY NAME**:
+
+| #   | condition                                                           | forced                    |
+| --- | ------------------------------------------------------------------- | ------------------------- |
+| R0  | `extraModules.<c>` is not an attrset — the retired node-keyed shape | at the root               |
+| R1  | a non-empty `extraModules.<c>` and no `terminals.<c>`               | at the root               |
+| R2  | `projected.nodes` has no `<n>`                                      | on `realized.<c>`'s spine |
+| R3  | `nodes.<n>.classes.<c>` is empty — `<c>` does not realize at `<n>`  | on `realized.<c>`'s spine |
+
+A per-class map with no nodes (`{ d = { }; }`) is no address. The check reads names, never an extra
+module. R2/R3 are refused at their OWNER's level: reading `realized.<c>` already forces the node keys
+and every node's `<c>` list, so the result's own spine (the class names) never reaches
+`projected.nodes`.
+
+★ **E2 IS HELD FOR THE IMPLICIT CROSSING ONLY.** The inlet is opaque: it cannot tell an adapted
+module from an un-adapted one, so raw `<from>` content addressed to `<to>` **is delivered**. What is
+held is that no crossing is implicit (`modules`), that an explicit one lands only at its address, and
+that an address which does not realize refuses. Adapter *matching* is performed nowhere.
+
+★ **DOMAIN RESTRICTION: an address set must not be derived from `realize`'s own output.** Forcing
+the result forces `extraModules`' class names and each per-class map; forcing `realized.<c>` forces
+the addressed node names under `<c>`. A self-derived address set therefore diverges — uncatchable
+infinite recursion, measured across classes too — because a total check must read every address
+before the realization it guards is observable, and no placement of the check admits it. Derive the
+addresses from the projection.
+
 ## traps and measured facts
 
 <!-- gen-citations:begin -->
@@ -72,6 +111,7 @@ per-node fold instead, the check would fire on the size of the input.
 | `realization-predicate` | the Rider through a HAND-BUILT registry — the predicate half, including the fabricated-empty state gen-aspects never produces, both wrong-category arms, and the input-absence / key-absence pair |
 | `carriage`              | the terminal contract, the split weld, the rename observed at the SITES, and the target-facing key                                                                                                |
 | `contribution-order`    | the declared layer order, the permutation pair, namespace separation                                                                                                                              |
+| `class-discipline`      | no implicit crossing; the addressed crossing arrives at its class only (three terminals); the address check forces no module and no projection                                                    |
 | `extent`                | the accessor's laziness and its per-class narrowness                                                                                                                                              |
 | `class-content`         | class bodies never evaluated (as a PAIR), multiple definitions per class per node                                                                                                                 |
 | `purity`                | no nixpkgs anywhere under `lib/`                                                                                                                                                                  |

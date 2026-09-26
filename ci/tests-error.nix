@@ -40,6 +40,39 @@ let
     "gen-delivery: realize: layerOrder repeats contribution layer(s) projection — a sequence with "
     + "duplicates is not an order, and the LAST occurrence would decide, silently inverting the "
     + "declared precedence";
+
+  retiredNodeKeyedShape =
+    "gen-delivery: realize: extraModules.n is not an attrset — extraModules is CLASS-MAJOR, "
+    + "{ <class>.<node> = [ module ]; }; the node-keyed { <node> = [ module ]; } shape was retired "
+    + "because it reached every class's terminal";
+
+  noDeclaredContent =
+    "gen-delivery: realize: extraModules.a.m addresses a node with no declared a content — a does "
+    + "not realize there (ADR-0028's Rider), so the extras would be dropped";
+
+  # The address fixture: `n` carries a and b content, `m` carries b only; terminals a and b.
+  addressed =
+    extraModules:
+    genDelivery.realize {
+      projected.nodes = {
+        n = {
+          bindings = { };
+          classes = {
+            a = [ { from = "a"; } ];
+            b = [ { from = "b"; } ];
+          };
+        };
+        m = {
+          bindings = { };
+          classes.b = [ { from = "b"; } ];
+        };
+      };
+      terminals = {
+        a = args: args;
+        b = args: args;
+      };
+      inherit extraModules;
+    };
 in
 {
   flake.testsError = {
@@ -96,6 +129,31 @@ in
         ];
       };
       expectedError.msg = exactly duplicateLayer;
+    };
+
+    # ── THE ADDRESSED INLET: every address a point of the realization, or a refusal by name ──
+    # R0 — THE RETIRED NODE-KEYED SHAPE. The honest migration mistake: read as class `n`, it would be
+    # dropped silently. Refused at the root, so the result's own WHNF names it.
+    test-node-keyed-extras-refuse-as-the-retired-shape = {
+      expr = addressed { n = [ { x = 1; } ]; };
+      expectedError.msg = exactly retiredNodeKeyedShape;
+    };
+    # R1 — the class has no terminal, so nothing realizes it.
+    test-extras-for-a-class-with-no-terminal-refuse-by-name = {
+      expr = addressed { d.n = [ { x = 1; } ]; };
+      expectedError.msg = exactly "gen-delivery: realize: extraModules.d.n addresses class d, which has no terminal — the extras would be dropped";
+    };
+    # R2 — the node is not projected. Refused on the addressed class's spine.
+    test-extras-for-an-unprojected-node-refuse-by-name = {
+      expr = (addressed { a.z = [ { x = 1; } ]; }).a;
+      expectedError.msg = exactly "gen-delivery: realize: extraModules.a addresses node z, which the projection does not carry — the extras would be dropped";
+    };
+    # R3 — the node carries no declared content for the class, so the class does not realize there
+    # and the extras cannot create a realization. `m` IS projected (it realizes b), so R2 cannot
+    # shadow this refusal.
+    test-extras-where-the-class-does-not-realize-refuse-by-name = {
+      expr = (addressed { a.m = [ { x = 1; } ]; }).a;
+      expectedError.msg = exactly noDeclaredContent;
     };
   };
 }

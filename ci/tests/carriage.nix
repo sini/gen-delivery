@@ -52,7 +52,7 @@ let
   realized = genDelivery.realize {
     inherit projected;
     terminals.nixos = reflect;
-    extraModules.owned = [ nodeExtra ];
+    extraModules.nixos.owned = [ nodeExtra ];
   };
 
   carriageKeys = node: builtins.sort builtins.lessThan (builtins.attrNames realized.nixos.${node});

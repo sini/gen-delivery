@@ -109,8 +109,24 @@ positional chain this merge has always been.
 | `modules`      | this class's deferred-module list, opaque and unforced                        |
 | `bindings`     | the contribution layers folded in the declared order                          |
 | `extent`       | the realized set for **this class only**; its spine is the class's node keys  |
-| `extraModules` | the per-node extras (`[]` when absent)                                        |
+| `extraModules` | the extras addressed to **this class** at this node (`[]` when absent)        |
 | `passthrough`  | the target-owned channel, present iff the node's projection entry carries one |
+
+### the addressed inlet
+
+`realize`'s `extraModules` is **class-major**, `{ <class>.<node> = [ module ]; }`, the output's own
+coordinate: `extraModules.a.n` lands in `realized.a.n` and nowhere else. It is how a value crosses
+from one class to another — the caller adapts it and addresses it to the target class. Extras
+supplement a realization and never create one, so an address that names no point of the realization
+refuses by name: the retired node-keyed shape, a class with no terminal, an unprojected node, and a
+node with no declared content for the class.
+
+The inlet is opaque. It holds that no crossing is implicit and that an explicit one lands only where
+it is addressed; it does not check that the caller adapted what it addressed.
+
+**An address set must not be derived from `realize`'s own output.** The check reads every address
+before the realization it guards can be observed, so a self-derived address set diverges with an
+uncatchable infinite recursion. Derive the addresses from the projection.
 
 ## The names
 

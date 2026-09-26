@@ -264,7 +264,8 @@ let
   #   extent       the `realized.<class>` set itself — a lazy cross-node accessor for THIS class,
   #                and for this class ONLY: a terminal never receives a peer class's set. Its SPINE
   #                is the class's node keys, so reading the keys forces no peer artifact.
-  #   extraModules the per-node extras for this node (`[]` when absent).
+  #   extraModules the extras ADDRESSED to this class at this node (`[]` when absent) — never a
+  #                peer class's, by the same rule as `extent`.
   #   passthrough  the TARGET-OWNED channel, present IFF the node's projection entry carries one.
   #                Opaque: this surface never reads inside it, and the keys in it are the
   #                consumer's own (`osConfig` is one framework's instance of one).
@@ -285,7 +286,18 @@ let
       # THE DECLARED ORDER over those layers, least-specific first. A default value, readable and
       # overridable; never an implicit order, and never derived from what kind of thing a layer is.
       layerOrder ? defaultLayerOrder,
-      # `{ <node> = [ module ]; }` — per-node extras handed to the terminal (`[]` when absent).
+      # `{ <class>.<node> = [ module ]; }` — extras ADDRESSED to one class's terminal at one node,
+      # the same coordinate as the output (`[]` when absent). Every address must be a point of the
+      # realization or it refuses by name (the checks below). Extras SUPPLEMENT a realization and
+      # never create one: they are not declared content (ADR-0028's Rider).
+      #
+      # ★ DOMAIN RESTRICTION. Forcing the result forces `extraModules`' class names and each
+      # per-class map to WHNF; forcing a class's set `realized.<class>` also forces the spine of
+      # `projected.nodes` and the class list of each node addressed under that class. An address set
+      # DERIVED FROM `realize`'s OWN OUTPUT therefore diverges (uncatchable infinite recursion): a
+      # total check must read every address before the realization it guards is observable, so no
+      # placement of the check admits it. Derive addresses from the projection, never from the
+      # realization.
       extraModules ? { },
     }:
     let
@@ -319,56 +331,93 @@ let
         else
           null;
 
+      # THE INLET IS ADDRESSED, AND EVERY ADDRESS MUST BE A POINT OF THE REALIZATION. An address that
+      # names no point would drop its extras silently, so each one refuses by name instead. The
+      # shape and class halves are forced at the root beside `_layerOrderCheck`, for the same reason:
+      # they read only `extraModules` and `terminals`. A per-class map with no nodes (`{ d = { }; }`)
+      # is no address, so it never refuses.
+      _extraModulesCheck = builtins.foldl' (
+        acc: className:
+        let
+          perNode = extraModules.${className};
+        in
+        if !(builtins.isAttrs perNode) then
+          throw "gen-delivery: realize: extraModules.${className} is not an attrset — extraModules is CLASS-MAJOR, { <class>.<node> = [ module ]; }; the node-keyed { <node> = [ module ]; } shape was retired because it reached every class's terminal"
+        else if perNode != { } && !(terminals ? ${className}) then
+          throw "gen-delivery: realize: extraModules.${className}.${builtins.head (builtins.attrNames perNode)} addresses class ${className}, which has no terminal — the extras would be dropped"
+        else
+          acc
+      ) null (builtins.attrNames extraModules);
+
+      # The node half is REFUSED AT ITS OWNER'S LEVEL, on the class spine it guards: reading
+      # `realized.<class>` already forces the node keys and every node's list for this class, so the
+      # check forces nothing that spine did not, and the result's own spine (the class names) stays
+      # free of `projected.nodes`. Its predicate is the fold's own: `nodes ? <node>` is membership
+      # in the key set the fold iterates, and an empty class list is the fold's skip.
+      _addressedNodesCheck =
+        className:
+        builtins.foldl' (
+          acc: nodeName:
+          if !(nodes ? ${nodeName}) then
+            throw "gen-delivery: realize: extraModules.${className} addresses node ${nodeName}, which the projection does not carry — the extras would be dropped"
+          else if (nodes.${nodeName}.classes.${className} or [ ]) == [ ] then
+            throw "gen-delivery: realize: extraModules.${className}.${nodeName} addresses a node with no declared ${className} content — ${className} does not realize there (ADR-0028's Rider), so the extras would be dropped"
+          else
+            acc
+        ) null (builtins.attrNames (extraModules.${className} or { }));
+
       # The class-major fold. `realized` is self-referential: a node's `extent` is
       # `realized.<class>`, the same set being built — lazy, so forcing one node's artifact never
       # forces a peer's (the spine is only the class's node keys, populated by `listToAttrs` names).
       realized = builtins.mapAttrs (
         className: terminal:
-        builtins.listToAttrs (
-          builtins.concatMap (
-            nodeName:
-            let
-              nc = nodes.${nodeName};
-              classModules = nc.classes.${className} or [ ];
-            in
-            if classModules == [ ] then
-              [ ]
-            else
-              [
-                {
-                  name = nodeName;
-                  value =
-                    let
-                      contributions = {
-                        projection = nc.bindings;
-                        global = bindings;
-                        refinement = refinements.${nodeName} or { };
-                      };
-                      mergedBindings = algebra.record.foldLayers {
-                        layers = map (l: contributions.${l}) layerOrder;
-                      };
-                    in
-                    terminal (
-                      {
-                        name = nodeName;
-                        modules = classModules;
-                        bindings = mergedBindings;
-                        extent = realized.${className};
-                        extraModules = extraModules.${nodeName} or [ ];
-                      }
-                      # The carriage side of the passthrough, renamed. The weld that once tied this
-                      # emitted key to the entry's field name is already split, so the target-facing
-                      # key a class module reads is derived from nothing here and stays whatever the
-                      # consumer put INSIDE the channel.
-                      // (if nc ? passthrough then { passthrough = nc.passthrough; } else { })
-                    );
-                }
-              ]
-          ) (builtins.attrNames nodes)
+        builtins.seq (_addressedNodesCheck className) (
+          builtins.listToAttrs (
+            builtins.concatMap (
+              nodeName:
+              let
+                nc = nodes.${nodeName};
+                classModules = nc.classes.${className} or [ ];
+              in
+              if classModules == [ ] then
+                [ ]
+              else
+                [
+                  {
+                    name = nodeName;
+                    value =
+                      let
+                        contributions = {
+                          projection = nc.bindings;
+                          global = bindings;
+                          refinement = refinements.${nodeName} or { };
+                        };
+                        mergedBindings = algebra.record.foldLayers {
+                          layers = map (l: contributions.${l}) layerOrder;
+                        };
+                      in
+                      terminal (
+                        {
+                          name = nodeName;
+                          modules = classModules;
+                          bindings = mergedBindings;
+                          extent = realized.${className};
+                          extraModules = (extraModules.${className} or { }).${nodeName} or [ ];
+                        }
+                        # The carriage side of the passthrough, renamed. The weld that once tied this
+                        # emitted key to the entry's field name is already split, so the target-facing
+                        # key a class module reads is derived from nothing here and stays whatever the
+                        # consumer put INSIDE the channel.
+                        // (if nc ? passthrough then { passthrough = nc.passthrough; } else { })
+                      );
+                  }
+                ]
+            ) (builtins.attrNames nodes)
+          )
         )
       ) terminals;
     in
-    builtins.seq _layerOrderCheck realized;
+    builtins.seq _layerOrderCheck (builtins.seq _extraModulesCheck realized);
 in
 {
   inherit project realize;
