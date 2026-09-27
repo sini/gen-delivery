@@ -405,6 +405,21 @@
         "type": "github"
       }
     },
+    "gen-prelude_15": {
+      "locked": {
+        "lastModified": 1790489312,
+        "narHash": "sha256-pM4oC11mKRGzJIQ3h8Q9xNjYE8646FVa6+LYI92F3iA=",
+        "owner": "sini",
+        "repo": "gen-prelude",
+        "rev": "5a0b22d0f10f2b23063a20040ff4bc42a375bdd2",
+        "type": "github"
+      },
+      "original": {
+        "owner": "sini",
+        "repo": "gen-prelude",
+        "type": "github"
+      }
+    },
     "gen-prelude_2": {
       "locked": {
         "lastModified": 1790489312,
@@ -628,7 +643,8 @@
     "root": {
       "inputs": {
         "gen-algebra": "gen-algebra",
-        "gen-aspects": "gen-aspects"
+        "gen-aspects": "gen-aspects",
+        "gen-prelude": "gen-prelude_15"
       }
     }
   },

@@ -32,10 +32,14 @@
     let
       aspects = gen-aspects.lib;
       algebra = gen-algebra.lib;
+      # The third injected value, reached THROUGH the gen-aspects pin for the same reason gen-merge
+      # and gen-schema are: one gen-prelude instance, so a door-check cell never asks which copy
+      # answered.
+      prelude = gen-aspects.inputs.gen-prelude.lib;
       genMerge = gen-aspects.inputs.gen-merge.lib;
       genSchema = gen-aspects.inputs.gen-schema.lib;
 
-      genDelivery = import ../lib { inherit algebra aspects; };
+      genDelivery = import ../lib { inherit algebra aspects prelude; };
 
       # The fixture builder: a real aspect schema, resolved through gen-merge's byte-mode
       # `evalModuleTree`, exactly as a consumer's own composition would reach this surface. It

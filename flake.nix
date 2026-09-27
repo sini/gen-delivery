@@ -22,9 +22,15 @@
   # repository's own root lock on the flake path. The hub applies this output verbatim
   # (`(input "gen-delivery").lib { algebra; aspects; }`), so an APPLIED output here would abort every
   # hub evaluation with `attempt to call something which is not a function but a set`.
+  #
+  # `gen-prelude` is the third declared input, and it is declared on the same terms: the closed doors
+  # (`project`, `realize`) take its shared `checkOptions`/`checkRequired` from an injected `prelude`
+  # value (den-hoag-7gp66 P1), so it is an edge of this library the hub's library-graph check reads
+  # here, and a pin `nix flake lock` writes — never a value this flake applies.
   inputs = {
     gen-algebra.url = "github:sini/gen-algebra";
     gen-aspects.url = "github:sini/gen-aspects";
+    gen-prelude.url = "github:sini/gen-prelude";
   };
 
   outputs = _: {

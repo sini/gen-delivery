@@ -6,10 +6,10 @@
 # data. There is NO `...`: an argument this root does not declare is a loud error, not a silent drop.
 #
 # THE PIN SOURCE IS THE ROOT `flake.lock`, NOT `ci/flake.lock` (owner-ruled Arm A, 2026-09-16:
-# `den-hoag-4dfsv` §4.2). gen-delivery now declares both its dependencies as flake inputs, so a
-# root lock exists and is what `import ./. { }` resolves through — the ci lock is the test graph's
-# own pin source and is no longer read by this file. Both dependencies are root inputs of the root
-# lock, so both paths below are one segment long.
+# `den-hoag-4dfsv` §4.2). gen-delivery now declares all three of its dependencies as flake inputs, so
+# a root lock exists and is what `import ./. { }` resolves through — the ci lock is the test graph's
+# own pin source and is no longer read by this file. Every dependency is a root input of the root
+# lock, so every path below is one segment long.
 #
 # `src` AND `dep` ARE FORMALS, NOT `let` BINDINGS, AND THAT IS THE INJECTABLE RESOLVER SEAM. `src`
 # is the only expression here that fetches; everything else reads the lock as data. A caller
@@ -73,6 +73,7 @@ in
     import ./lib deps,
   algebra ? inputs.gen-algebra or (dep [ "gen-algebra" ]),
   aspects ? inputs.gen-aspects or (dep [ "gen-aspects" ]),
+  prelude ? inputs.gen-prelude or (dep [ "gen-prelude" ]),
 }:
 # THE BODY IS EAGER, AND THAT IS WHAT MAKES THE ENTRY CELL TOTAL RATHER THAN PARTIAL. `forced` forces
 # every wired dependency to WHNF before `./lib` sees it, so a default that cannot resolve is loud AT
@@ -82,13 +83,13 @@ in
 # this library: a pure force of the landed body reached 0 of its 2 dependency paths, and the cell
 # that stood here had to CALL the library over a hand-built registry to reach the resolver at all —
 # which still reached `aspects` and not `algebra`, while its own comment claimed both. With the eager
-# body a WHNF force of the root reaches both, whatever the published surface's shape.
+# body a WHNF force of the root reaches every one, whatever the published surface's shape.
 #
 # THE FORCE STOPS AT WHNF DELIBERATELY: `builtins.seq` of an attrset does not force its members, so
 # this reaches each dependency's root VALUE and never a member of it. A library that deliberately
 # refuses to build some member is therefore not an exception to it.
 let
-  deps = { inherit algebra aspects; };
+  deps = { inherit algebra aspects prelude; };
   forced = builtins.deepSeq (builtins.mapAttrs (_: builtins.typeOf) deps) null;
 in
 builtins.seq forced (wire {

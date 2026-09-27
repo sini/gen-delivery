@@ -8,6 +8,7 @@ each class's collected content to its target-owned terminal.
 genDelivery = inputs.gen-delivery.lib {
   algebra = inputs.gen-algebra.lib;
   aspects = inputs.gen-aspects.lib;
+  prelude = inputs.gen-prelude.lib;
 };
 
 projected = genDelivery.project {
