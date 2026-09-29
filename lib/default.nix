@@ -133,8 +133,9 @@ let
   # ordinary, ubiquitous state of a nested aspect — gen-aspects documents `null` as its answer for
   # an unregistered key and a consumer's typo gate is built on exactly that — so an undeclared key
   # is simply not a delivery class and nothing throws. The refusal that IS owed for an unrecognised
-  # key already exists upstream, at schema construction, and duplicating it here would throw on
-  # every nested aspect in the corpus.
+  # key IN THE CATEGORY DECLARATION (`cnf`) already exists upstream, at schema construction; an
+  # undeclared key in an aspect BODY is outside it: it is a nested aspect, declared by use. A per-key
+  # refusal here would throw on every nested aspect in the corpus.
   requireCnf =
     cnf:
     if cnf != null then
@@ -267,6 +268,8 @@ let
   # For each class that has a terminal, every node whose projection carries a NON-EMPTY module list
   # for that class is realized by calling the terminal with the pinned contract (below). A node with
   # no content for a class does not appear under it — the output is class-major and content-driven.
+  # A node carrying content for a class with NO terminal refuses by name: that content is an address
+  # naming no point of the realization, and would otherwise be dropped.
   # Each consumed `projected.nodes.<name>` entry MUST carry `bindings`, so the bare `nc.bindings`
   # read below fails loud on a malformed projection rather than papering over it.
   #
@@ -327,12 +330,12 @@ let
       # never create one: they are not declared content (ADR-0028's Rider).
       #
       # ★ DOMAIN RESTRICTION. Forcing the result forces `extraModules`' class names and each
-      # per-class map to WHNF; forcing a class's set `realized.<class>` also forces the spine of
-      # `projected.nodes` and the class list of each node addressed under that class. An address set
-      # DERIVED FROM `realize`'s OWN OUTPUT therefore diverges (uncatchable infinite recursion): a
-      # total check must read every address before the realization it guards is observable, so no
-      # placement of the check admits it. Derive addresses from the projection, never from the
-      # realization.
+      # per-class map to WHNF, and the spine of `projected.nodes` and each node's class SET (the
+      # content check); forcing a class's set `realized.<class>` also forces the class list of each
+      # node addressed under that class. An address set — or a projection — DERIVED FROM `realize`'s
+      # OWN OUTPUT therefore diverges (uncatchable infinite recursion): a total check must read every
+      # address before the realization it guards is observable, so no placement of the check admits
+      # it. Derive addresses and projections from the values, never from the realization.
       extraModules = checked.extraModules or { };
 
       nodes = projected.nodes;
@@ -385,9 +388,9 @@ let
 
       # The node half is REFUSED AT ITS OWNER'S LEVEL, on the class spine it guards: reading
       # `realized.<class>` already forces the node keys and every node's list for this class, so the
-      # check forces nothing that spine did not, and the result's own spine (the class names) stays
-      # free of `projected.nodes`. Its predicate is the fold's own: `nodes ? <node>` is membership
-      # in the key set the fold iterates, and an empty class list is the fold's skip.
+      # check forces nothing that spine did not, and the result's own spine never reads a class list
+      # of a class that has a terminal. Its predicate is the fold's own: `nodes ? <node>` is
+      # membership in the key set the fold iterates, and an empty class list is the fold's skip.
       _addressedNodesCheck =
         className:
         builtins.foldl' (
@@ -400,9 +403,31 @@ let
             acc
         ) null (builtins.attrNames (extraModules.${className} or { }));
 
+      # DECLARED CONTENT IS AN ADDRESS TOO, AND IT REFUSES BY THE SAME RULE. A node's non-empty
+      # `classes.<c>` addresses class <c>'s terminal exactly as `extraModules.<c>.<node>` does, so a
+      # class with content and no terminal refuses by name rather than dropping its content. The
+      # predicate is the fold's own: membership in `terminals`, and an empty list is the fold's skip.
+      # Forced AT THE ROOT, beside `_extraModulesCheck`, because like R1 it has no owning spine: the
+      # class it refuses is exactly the one `realized` never visits, so a spine placement leaves
+      # `realized.<c> or …` and `attrNames realized` reading the drop silently. The result's WHNF
+      # therefore forces the projection's node keys and each node's class SET; terminal-first, it
+      # never reads the list of a class that has a terminal, a content element, or a terminal.
+      _contentCheck = builtins.foldl' (
+        acc: nodeName:
+        builtins.foldl' (
+          acc': className:
+          if !(terminals ? ${className}) && nodes.${nodeName}.classes.${className} != [ ] then
+            throw "gen-delivery: realize: node ${nodeName} carries declared ${className} content, and class ${className} has no terminal — the content would be dropped"
+          else
+            acc'
+        ) acc (builtins.attrNames nodes.${nodeName}.classes)
+      ) null (builtins.attrNames nodes);
+
       # The class-major fold. `realized` is self-referential: a node's `extent` is
       # `realized.<class>`, the same set being built — lazy, so forcing one node's artifact never
       # forces a peer's (the spine is only the class's node keys, populated by `listToAttrs` names).
+      # It iterates `terminals`, so it never visits a class with no terminal: `_contentCheck` is what
+      # stops such a class's content vanishing here.
       realized = builtins.mapAttrs (
         className: terminal:
         builtins.seq (_addressedNodesCheck className) (
@@ -451,7 +476,11 @@ let
         )
       ) terminals;
     in
-    builtins.seq checked (builtins.seq _layerOrderCheck (builtins.seq _extraModulesCheck realized));
+    builtins.seq checked (
+      builtins.seq _layerOrderCheck (
+        builtins.seq _extraModulesCheck (builtins.seq _contentCheck realized)
+      )
+    );
 in
 {
   inherit project realize;

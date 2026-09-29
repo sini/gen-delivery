@@ -72,11 +72,19 @@ Every address must be a point of the realization, or it **REFUSES BY NAME**:
 | R1  | a non-empty `extraModules.<c>` and no `terminals.<c>`               | at the root               |
 | R2  | `projected.nodes` has no `<n>`                                      | on `realized.<c>`'s spine |
 | R3  | `nodes.<n>.classes.<c>` is empty — `<c>` does not realize at `<n>`  | on `realized.<c>`'s spine |
+| R4  | `nodes.<n>.classes.<c>` is non-empty and no `terminals.<c>`         | at the root               |
 
 A per-class map with no nodes (`{ d = { }; }`) is no address. The check reads names, never an extra
 module. R2/R3 are refused at their OWNER's level: reading `realized.<c>` already forces the node keys
-and every node's `<c>` list, so the result's own spine (the class names) never reaches
-`projected.nodes`.
+and every node's `<c>` list, so the check forces nothing that spine did not.
+
+R4 is R1's content arm: declared content is an address of the implicit route, so content for a class
+with no terminal refuses instead of vanishing from a fold that iterates `terminals`. It sits at the
+root because it has no owning spine: a check on each `realized.<c>` would leave `realized.<c> or …`
+and `attrNames realized` reading the drop at exit 0. So the result's WHNF forces the projection's
+node keys and each node's class **set**. Terminal-first, it never reads the list of a class that has
+a terminal, a content element or a terminal (`class-discipline`, both placement cells and the
+restated spine cells).
 
 ★ **E2 IS HELD FOR THE IMPLICIT CROSSING ONLY.** The inlet is opaque: it cannot tell an adapted
 module from an un-adapted one, so raw `<from>` content addressed to `<to>` **is delivered**. What is
@@ -84,11 +92,12 @@ held is that no crossing is implicit (`modules`), that an explicit one lands onl
 that an address which does not realize refuses. Adapter *matching* is performed nowhere.
 
 ★ **DOMAIN RESTRICTION: an address set must not be derived from `realize`'s own output.** Forcing
-the result forces `extraModules`' class names and each per-class map; forcing `realized.<c>` forces
-the addressed node names under `<c>`. A self-derived address set therefore diverges — uncatchable
-infinite recursion, measured across classes too — because a total check must read every address
-before the realization it guards is observable, and no placement of the check admits it. Derive the
-addresses from the projection.
+the result forces `extraModules`' class names and each per-class map, and the projection's node keys
+and class sets (R4); forcing `realized.<c>` forces the addressed node names under `<c>`. A
+self-derived address set or projection therefore diverges — uncatchable infinite recursion,
+measured across classes too — because a total check must read every address before the realization
+it guards is observable, and no placement of the check admits it. Derive the addresses from the
+projection, and the projection from the values.
 
 ## traps and measured facts
 
@@ -106,17 +115,17 @@ addresses from the projection.
 
 ## what the suites hold
 
-| suite                   | subject                                                                                                                                                                                           |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `declared-content`      | the Rider through a REAL gen-aspects schema — the rendering half                                                                                                                                  |
-| `realization-predicate` | the Rider through a HAND-BUILT registry — the predicate half, including the fabricated-empty state gen-aspects never produces, both wrong-category arms, and the input-absence / key-absence pair |
-| `carriage`              | the terminal contract, the split weld, the rename observed at the SITES, and the target-facing key                                                                                                |
-| `contribution-order`    | the declared layer order, the permutation pair, namespace separation                                                                                                                              |
-| `class-discipline`      | no implicit crossing; the addressed crossing arrives at its class only (three terminals); the address check forces no module and no projection                                                    |
-| `extent`                | the accessor's laziness and its per-class narrowness                                                                                                                                              |
-| `class-content`         | class bodies never evaluated (as a PAIR), multiple definitions per class per node                                                                                                                 |
-| `purity`                | no nixpkgs anywhere under `lib/`                                                                                                                                                                  |
-| `doors`                 | the two MIXED doors refuse a missing field, an unknown option and a non-set CATCHABLY, naming the door (goldens: `ci/tests-error.nix`)                                                            |
+| suite                   | subject                                                                                                                                                                                                |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `declared-content`      | the Rider through a REAL gen-aspects schema — the rendering half                                                                                                                                       |
+| `realization-predicate` | the Rider through a HAND-BUILT registry — the predicate half, including the fabricated-empty state gen-aspects never produces, both wrong-category arms, and the input-absence / key-absence pair      |
+| `carriage`              | the terminal contract, the split weld, the rename observed at the SITES, and the target-facing key                                                                                                     |
+| `contribution-order`    | the declared layer order, the permutation pair, namespace separation                                                                                                                                   |
+| `class-discipline`      | no implicit crossing; the addressed crossing arrives at its class only (three terminals); the address check forces no module; content with no terminal refuses on every read, and forces no class list |
+| `extent`                | the accessor's laziness and its per-class narrowness                                                                                                                                                   |
+| `class-content`         | class bodies never evaluated (as a PAIR), multiple definitions per class per node                                                                                                                      |
+| `purity`                | no nixpkgs anywhere under `lib/`                                                                                                                                                                       |
+| `doors`                 | the two MIXED doors refuse a missing field, an unknown option and a non-set CATCHABLY, naming the door (goldens: `ci/tests-error.nix`)                                                                 |
 
 ★ **The rename cells are SITE-SCOPED, and that is not stylistic.** They read the key set the fold
 actually emits, never tokens in a file. A token-scoped version of the same claim goes green by

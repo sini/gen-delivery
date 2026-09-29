@@ -122,12 +122,17 @@ supplement a realization and never create one, so an address that names no point
 refuses by name: the retired node-keyed shape, a class with no terminal, an unprojected node, and a
 node with no declared content for the class.
 
+Declared content is an address too. A node whose projection carries content for a class with no
+terminal refuses by name, where it would otherwise vanish from the realization. The refusal is
+forced with the result itself, so any read of it, including its class names, sees it; it reads each
+node's class names, never the content of a class that has a terminal.
+
 The inlet is opaque. It holds that no crossing is implicit and that an explicit one lands only where
 it is addressed; it does not check that the caller adapted what it addressed.
 
-**An address set must not be derived from `realize`'s own output.** The check reads every address
-before the realization it guards can be observed, so a self-derived address set diverges with an
-uncatchable infinite recursion. Derive the addresses from the projection.
+**An address set must not be derived from `realize`'s own output, nor a projection.** The checks
+read every address before the realization they guard can be observed, so a self-derived one diverges
+with an uncatchable infinite recursion. Derive the addresses from the projection.
 
 ## The names
 

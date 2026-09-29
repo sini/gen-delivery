@@ -71,9 +71,14 @@ let
         forcedPeer = extent.n1;
       };
 
+  # `beta` carries content in the shared projection, so it needs a terminal or `realize` refuses
+  # it (R4); the cells below read `boomed.alpha` only.
   boomed = genDelivery.realize {
     inherit projected;
-    terminals.alpha = boomTerminal;
+    terminals = {
+      alpha = boomTerminal;
+      beta = spineTerminal;
+    };
   };
 
   forces = v: (builtins.tryEval (builtins.deepSeq v v)).success;

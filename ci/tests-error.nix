@@ -156,6 +156,23 @@ in
       expectedError.msg = exactly noDeclaredContent;
     };
 
+    # R4 — DECLARED CONTENT addressed to a class with no terminal: the content arm of R1, refused
+    # at the root for the same reason.
+    test-content-for-a-class-with-no-terminal-refuses-by-name = {
+      expr =
+        (genDelivery.realize {
+          projected.nodes.n = {
+            bindings = { };
+            classes = {
+              a = [ { from = "a"; } ];
+              d = [ { from = "d"; } ];
+            };
+          };
+          terminals.a = args: args;
+        }).a;
+      expectedError.msg = exactly "gen-delivery: realize: node n carries declared d content, and class d has no terminal — the content would be dropped";
+    };
+
     # ── THE DOOR CHECKS (den-hoag-7gp66 P1): each refusal names the door, then the primitive ──
     # `ci/tests/doors.nix` pins that these are catchable; these pin WHICH refusal fired.
     test-project-missing-required-field-names-the-door = {
