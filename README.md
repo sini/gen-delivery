@@ -130,9 +130,10 @@ node's class names, never the content of a class that has a terminal.
 The inlet is opaque. It holds that no crossing is implicit and that an explicit one lands only where
 it is addressed; it does not check that the caller adapted what it addressed.
 
-**An address set must not be derived from `realize`'s own output, nor a projection.** The checks
+**Neither an address set nor a projection may be derived from `realize`'s own output.** The checks
 read every address before the realization they guard can be observed, so a self-derived one diverges
-with an uncatchable infinite recursion. Derive the addresses from the projection.
+with an uncatchable infinite recursion. Derive the addresses from the projection, and the projection
+from the values.
 
 ## The names
 

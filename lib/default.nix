@@ -270,8 +270,10 @@ let
   # no content for a class does not appear under it — the output is class-major and content-driven.
   # A node carrying content for a class with NO terminal refuses by name: that content is an address
   # naming no point of the realization, and would otherwise be dropped.
-  # Each consumed `projected.nodes.<name>` entry MUST carry `bindings`, so the bare `nc.bindings`
-  # read below fails loud on a malformed projection rather than papering over it.
+  # Each consumed `projected.nodes.<name>` entry MUST carry `bindings` and `classes`, so the bare
+  # `nc.bindings` and `.classes` reads below fail loud on a malformed projection rather than papering
+  # over it. `classes` is read for every node at the result's WHNF (the content check), so an entry
+  # without it fails the whole result.
   #
   # Terminal contract (every field pinned):
   #   name         the node's registry key (string).
