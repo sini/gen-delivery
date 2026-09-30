@@ -45,11 +45,32 @@ chain whose only statement anywhere was a gloss in a header comment. It was comp
 
 ## The published surface
 
-|                                                                                                        |                                                          |
-| ------------------------------------------------------------------------------------------------------ | -------------------------------------------------------- |
-| `project { values, cnf, selectNodes }`                                                                 | the flat aspect registry + the per-node build projection |
-| `realize { projected, terminals, bindings ? {}, refinements ? {}, layerOrder ? …, extraModules ? {} }` | class-major artifacts, `{ <class>.<node> = artifact; }`  |
-| `defaultLayerOrder`                                                                                    | the contribution-order declaration, readable             |
+|                                                                                                        |                                                                                                           |
+| ------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
+| `project { values, cnf, selectNodes }`                                                                 | the flat aspect registry + the per-node build projection, over the include closure of each node's members |
+| `realize { projected, terminals, bindings ? {}, refinements ? {}, layerOrder ? …, extraModules ? {} }` | class-major artifacts, `{ <class>.<node> = artifact; }`                                                   |
+| `defaultLayerOrder`                                                                                    | the contribution-order declaration, readable                                                              |
+
+### the include closure
+
+A node receives the content of its members **and of everything they include**. `project` walks
+gen-aspects' published include sites (`graphFacts`' `includeSitesOf`) breadth-first from the node's
+members, in declared order:
+
+- a **reference** to an aspect delivers that aspect, once per node however many paths reach it; an
+  include cycle between named aspects terminates;
+- **inline content** written at an include position (an aspect literal, or the part gen-aspects
+  coerces a split aspect's `{ config, ... }:` definition into) is delivered at its position, and
+  its own includes are followed the same way, so an aspect split across modules delivers every part;
+- a reference into a tree this one does not hold is **refused by name** (federate the trees first);
+- **parametric content** is refused by name where it is reached: a `{ host, ... }:` include, and an
+  aspect that is itself parametric. That second refusal is interim: it replaces a silent drop until
+  parametric aspects can be delivered.
+
+A member is an aspect **identifier** (its key), resolved through `graphFacts`' `nodeIdOf`; a member
+naming no aspect, or written as a declaration value, is refused by name. Every refusal fires only
+for a node that reaches the bad include. The order is breadth-first by default, and that default is
+reversible.
 
 ### the realization predicate
 

@@ -155,15 +155,65 @@ let
       )
     );
 
-  # `projectNodes` — the node-keyed reshape of the FLAT aspect registry. For each node instance,
-  # gather the deferredModules of each class across the aspects the node declares membership in
-  # (`node.aspects`). `selectNodes` names WHICH resolved attrset holds the node instances — a nested
-  # registry layout (`fleet.bobbins`) would otherwise project empty under a hardcoded top-level
-  # read. Yields
+  # ── THE INCLUDE CLOSURE'S REFUSALS ──
+  # Rendered from named bindings, so the `testsError` cells hold each one to its subject. Every one
+  # replaces an arm that used to drop something with no message (ADR-0025 item 1).
+  memberNotIdentifierRefusal =
+    node: k:
+    "gen-delivery: project: node '${node}' lists a member that is not an aspect identifier (a "
+    + "${builtins.typeOf k}); a member is named by its aspect's key";
+  memberUnknownRefusal =
+    node: k:
+    "gen-delivery: project: node '${node}' names aspect '${k}' as a member, and no aspect has that key";
+  foreignIncludeRefusal =
+    id: at: ref:
+    "gen-delivery: project: aspect '${id}' includes at position ${at} a reference into origin "
+    + "'${prelude.concatStringsSep "/" ref.origin}', which this tree does not hold; project delivers "
+    + "only what it can reach, so federate the trees first";
+  sealedIncludeRefusal =
+    id: at:
+    "gen-delivery: project: aspect '${id}' carries at include position ${at} parametric content (a "
+    + "guard, a wrapped function or a deferred include), which delivery cannot evaluate before "
+    + "parametric aspects are specified (ADR-0010 section 4)";
+  # INTERIM (the OQ4 ruling's arm b): a node that IS parametric, either `{ host, ... }:` as its only
+  # definition or as one of several (which folds the whole aspect, its static parts included, into
+  # a guard carrier), is refused by name until parametric content can be delivered.
+  guardLeafRefusal =
+    id:
+    "gen-delivery: project: aspect '${id}' is parametric (a guard or a wrapped function, including an "
+    + "aspect with a `{ host, ... }:` definition), so none of its parts can be delivered before "
+    + "parametric aspects are specified (ADR-0010 section 4); this refusal is interim and replaces a "
+    + "silent drop";
+
+  # `projectNodes` — the node-keyed reshape of the aspect facts. For each node instance, gather the
+  # deferredModules of each class across the INCLUDE CLOSURE of the aspects the node declares
+  # membership in (`node.aspects`). `selectNodes` names WHICH resolved attrset holds the node
+  # instances — a nested registry layout (`fleet.bobbins`) would otherwise project empty under a
+  # hardcoded top-level read. Yields
   #   { <node> = { bindings = { node = <resolved instance>; }; classes = { <class> = [ <deferredModule> ]; }; }; }
   # PURE — no nixpkgs; the deferredModules stay unforced (opaque) until the terminal imports them.
+  #
+  # ── THE CLOSURE IS A RECEIVER-ROOTED QUERY, AND gen-aspects STATES ONLY ITS FACTS ──
+  # ADR-0010 section 1: a collector is a receiver-rooted query over the aspect graph. It is rooted at
+  # the node's members, in declared order, and follows gen-aspects' published `includeSitesOf`
+  # breadth-first (`builtins.genericClosure`; the order is a default, reversible):
+  #
+  #   local    the target node, delivered once however many paths reach it (a diamond is two
+  #            edges to one node; an include cycle between named aspects terminates);
+  #   content  inline content written at the include position (an aspect literal, or the part
+  #            `aspectType` coerces a split definition into), delivered AT ITS POSITION, and its own
+  #            sites followed the same way;
+  #   foreign  refused by name: a reference into a tree this one does not hold;
+  #   sealed   refused by name: parametric content.
+  #
+  # A node's walk key is its id. An inline site's is `[ hostId ] ++ positionPath`, an ADDRESS into
+  # the host's published declaration and never a name for the content: it is generated exactly once
+  # (by the one item holding that position), so it never decides a merge, it is rendered only
+  # inside a refusal, and it never leaves this function. The classification is gen-aspects'
+  # (`resolve`), read here and never re-run. A member is an identifier, resolved through the
+  # facts' key→id relation (`nodeIdOf`), never by re-rendering the id.
   projectNodes =
-    cnf: selectNodes: values: registry:
+    cnf: selectNodes: values:
     let
       nodes = selectNodes values;
       # `selectNodes` is caller-supplied; a non-attrset result would die inside `mapAttrs` as an
@@ -173,22 +223,79 @@ let
           null
         else
           throw "gen-delivery: project: selectNodes must return an attrset of node instances ({ <node> = <instance>; }), got ${builtins.typeOf nodes}";
+
+      # One facts record per `project` call: each node's sites are a thunk in it, resolved at most
+      # once however many nodes reach that node.
+      facts = aspects.graphFacts cnf (values.aspects or { });
+      at = pos: prelude.concatStringsSep "." (map toString pos);
+
+      memberId =
+        node: k:
+        if !builtins.isString k then
+          throw (memberNotIdentifierRefusal node k)
+        else
+          facts.nodeIdOf.${k} or (throw (memberUnknownRefusal node k));
+
+      nodeItem = id: {
+        key = [ id ];
+        inherit id;
+        pos = [ ];
+      };
+      succ =
+        item:
+        builtins.concatLists (
+          prelude.imap0 (
+            i: site:
+            let
+              pos = item.pos ++ [ i ];
+            in
+            if site.kind == "local" then
+              [ (nodeItem site.target) ]
+            else if site.kind == "content" then
+              [
+                {
+                  key = [ item.id ] ++ pos;
+                  inherit (item) id;
+                  inherit pos;
+                  inherit (site) sites;
+                }
+              ]
+            else if site.kind == "foreign" then
+              throw (foreignIncludeRefusal item.id (at pos) site.ref)
+            else
+              throw (sealedIncludeRefusal item.id (at pos))
+          ) (if item.pos == [ ] then facts.includeSitesOf.${item.id} else item.sites)
+        );
+      # The entry an item delivers: a node's value, or the element at the site's position inside the
+      # host's `includes`, descending through each level's `includes`.
+      contentOf =
+        item:
+        let
+          entry = facts.nodeData.${item.id};
+        in
+        if item.pos != [ ] then
+          builtins.foldl' (e: i: builtins.elemAt e.includes i) entry item.pos
+        else if aspects.isGuardLeaf entry then
+          throw (guardLeafRefusal item.id)
+        else
+          entry;
     in
     builtins.seq _nodesCheck (
       builtins.mapAttrs (
-        _nodeName: inst:
+        nodeName: inst:
         let
-          memberAspects = builtins.filter (a: registry ? ${a}) (inst.aspects or [ ]);
-          classNames = dedup (builtins.concatMap (a: deliveryClassesOf cnf registry.${a}) memberAspects);
+          reached = map contentOf (
+            builtins.genericClosure {
+              startSet = map (k: nodeItem (memberId nodeName k)) (inst.aspects or [ ]);
+              operator = succ;
+            }
+          );
+          classNames = dedup (builtins.concatMap (deliveryClassesOf cnf) reached);
           collectClass =
             class:
             builtins.concatMap (
-              a:
-              let
-                entry = registry.${a};
-              in
-              if builtins.elem class (deliveryClassesOf cnf entry) then [ entry.${class} ] else [ ]
-            ) memberAspects;
+              entry: if builtins.elem class (deliveryClassesOf cnf entry) then [ entry.${class} ] else [ ]
+            ) reached;
         in
         {
           bindings = {
@@ -255,7 +362,7 @@ let
 
         # The per-node build projection — a node-keyed reshape of the flat registry, driven by each
         # node's `aspects` membership. This is what the terminal builds from.
-        nodes = projectNodes declaration selector values registry;
+        nodes = projectNodes declaration selector values;
       }
     );
 

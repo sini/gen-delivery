@@ -21,7 +21,13 @@
 # passes against a message that says something else after it — which would make these cells agree
 # with the very rewording they exist to catch. Every pattern below is anchored at both ends and
 # built by ESCAPING THE LITERAL TEXT rather than by hand.
-{ genDelivery, lib, ... }:
+{
+  genDelivery,
+  lib,
+  aspects,
+  genMerge,
+  ...
+}:
 let
   exactly = msg: "^" + lib.escapeRegex msg + "$";
 
@@ -49,6 +55,57 @@ let
   noDeclaredContent =
     "gen-delivery: realize: extraModules.a.m addresses a node with no declared a content — a delivery "
     + "class realizes only on declared content, so a does not realize there and the extras would be dropped";
+
+  # ── THE INCLUDE CLOSURE'S REFUSALS ── one tree per refusal, over a raw `hosts` attrset so a member
+  # can be written as something other than a string. The expression forces the node's class names,
+  # which is where the closure is walked.
+  closureClasses =
+    members: mods:
+    let
+      cnf.keySemantics.nixos.category = "class";
+      values =
+        (genMerge.evalModuleTree {
+          modules = [
+            ((aspects.mkAspectSchema cnf).mkAspectModule { })
+            {
+              options.hosts = genMerge.mkOption {
+                type = genMerge.types.attrsOf genMerge.types.raw;
+                default = { };
+              };
+            }
+            { hosts.server.aspects = members; }
+          ]
+          ++ mods;
+        }).config;
+    in
+    builtins.attrNames
+      (genDelivery.project {
+        inherit values cnf;
+        selectNodes = v: v.hosts;
+      }).nodes.server.classes;
+  hostFn =
+    { host, ... }:
+    {
+      nixos.marks = [ host.name ];
+    };
+
+  memberUnknown = "gen-delivery: project: node 'server' names aspect 'ghost' as a member, and no aspect has that key";
+  memberNotIdentifier =
+    "gen-delivery: project: node 'server' lists a member that is not an aspect identifier (a set); "
+    + "a member is named by its aspect's key";
+  foreignInclude =
+    "gen-delivery: project: aspect 'a' includes at position 0 a reference into origin 'acme', which "
+    + "this tree does not hold; project delivers only what it can reach, so federate the trees first";
+  sealedInclude =
+    position:
+    "gen-delivery: project: aspect 'a' carries at include position ${position} parametric content (a "
+    + "guard, a wrapped function or a deferred include), which delivery cannot evaluate before "
+    + "parametric aspects are specified (ADR-0010 section 4)";
+  guardLeaf =
+    "gen-delivery: project: aspect 'p' is parametric (a guard or a wrapped function, including an "
+    + "aspect with a `{ host, ... }:` definition), so none of its parts can be delivered before "
+    + "parametric aspects are specified (ADR-0010 section 4); this refusal is interim and replaces a "
+    + "silent drop";
 
   # The address fixture: `n` carries a and b content, `m` carries b only; terminals a and b.
   addressed =
@@ -171,6 +228,68 @@ in
           terminals.a = args: args;
         }).a;
       expectedError.msg = exactly "gen-delivery: realize: node n carries declared d content, and class d has no terminal — the content would be dropped";
+    };
+
+    # ── THE INCLUDE CLOSURE: each refusal names its subject ──
+    # `ci/tests/include-closure.nix` pins that these are catchable and reach-local; these pin WHICH
+    # refusal fired, since a closure refusing for the wrong reason reads green there.
+    test-member-naming-no-aspect-names-it = {
+      expr = closureClasses [ "a" "ghost" ] [ { aspects.a.nixos.marks = [ "a" ]; } ];
+      expectedError.msg = exactly memberUnknown;
+    };
+    test-declaration-member-names-the-node = {
+      expr = closureClasses [ { nixos.marks = [ "decl" ]; } ] [ ];
+      expectedError.msg = exactly memberNotIdentifier;
+    };
+    test-foreign-include-names-origin-and-position = {
+      expr =
+        closureClasses
+          [ "a" ]
+          [
+            {
+              aspects.a.includes = [
+                (aspects.keyRef {
+                  origin = [ "acme" ];
+                  path = [ "ssh" ];
+                })
+              ];
+            }
+          ];
+      expectedError.msg = exactly foreignInclude;
+    };
+    test-sealed-include-names-the-position = {
+      expr = closureClasses [ "a" ] [ { aspects.a.includes = [ hostFn ]; } ];
+      expectedError.msg = exactly (sealedInclude "0");
+    };
+    # At depth, the position is the path of indices through each level's `includes`.
+    test-nested-sealed-include-names-the-position-path = {
+      expr =
+        closureClasses
+          [ "a" ]
+          [
+            {
+              aspects.a.includes = [
+                {
+                  nixos.marks = [ "i" ];
+                  includes = [
+                    { nixos.marks = [ "j" ]; }
+                    hostFn
+                  ];
+                }
+              ];
+            }
+          ];
+      expectedError.msg = exactly (sealedInclude "0.1");
+    };
+    test-parametric-node-names-it-and-the-interim = {
+      expr =
+        closureClasses
+          [ "p" ]
+          [
+            { aspects.p.nixos.marks = [ "attr" ]; }
+            { aspects.p = hostFn; }
+          ];
+      expectedError.msg = exactly guardLeaf;
     };
 
     # ── THE DOOR CHECKS (den-hoag-7gp66 P1): each refusal names the door, then the primitive ──
