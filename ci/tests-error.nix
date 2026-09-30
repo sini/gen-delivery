@@ -47,8 +47,8 @@ let
     + "because it reached every class's terminal";
 
   noDeclaredContent =
-    "gen-delivery: realize: extraModules.a.m addresses a node with no declared a content — a does "
-    + "not realize there (ADR-0028's Rider), so the extras would be dropped";
+    "gen-delivery: realize: extraModules.a.m addresses a node with no declared a content — a delivery "
+    + "class realizes only on declared content, so a does not realize there and the extras would be dropped";
 
   # The address fixture: `n` carries a and b content, `m` carries b only; terminals a and b.
   addressed =

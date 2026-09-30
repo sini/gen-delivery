@@ -400,7 +400,7 @@ let
           if !(nodes ? ${nodeName}) then
             throw "gen-delivery: realize: extraModules.${className} addresses node ${nodeName}, which the projection does not carry — the extras would be dropped"
           else if (nodes.${nodeName}.classes.${className} or [ ]) == [ ] then
-            throw "gen-delivery: realize: extraModules.${className}.${nodeName} addresses a node with no declared ${className} content — ${className} does not realize there (ADR-0028's Rider), so the extras would be dropped"
+            throw "gen-delivery: realize: extraModules.${className}.${nodeName} addresses a node with no declared ${className} content — a delivery class realizes only on declared content, so ${className} does not realize there and the extras would be dropped"
           else
             acc
         ) null (builtins.attrNames (extraModules.${className} or { }));
