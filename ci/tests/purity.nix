@@ -7,7 +7,7 @@
 #
 # The scan reads SOURCE with comment text stripped, so a token named in a comment (this file names
 # several) does not fail the cell it documents.
-{ lib, ... }:
+{ genPrelude, lib, ... }:
 let
   libDir = ../../lib;
 
@@ -116,7 +116,8 @@ let
   scan =
     srcs:
     lib.concatMap (
-      src: map (tok: "${src.name}: '${tok}'") (lib.filter (tok: lib.hasInfix tok src.code) forbidden)
+      src:
+      map (tok: "${src.name}: '${tok}'") (lib.filter (tok: genPrelude.hasInfix tok src.code) forbidden)
     ) srcs;
 
   violations = scan sources;
@@ -133,7 +134,7 @@ let
   # to name the substrate passes. That residue is named rather than removed, and it closes if this
   # library ever grows a second module.
   liveToken = "algebra";
-  liveReads = map (src: src.name) (lib.filter (src: lib.hasInfix liveToken src.code) sources);
+  liveReads = map (src: src.name) (lib.filter (src: genPrelude.hasInfix liveToken src.code) sources);
 in
 {
   flake.tests.purity = {
@@ -239,7 +240,7 @@ in
     # file to grow one arrives as a red that has to be READ, exactly as a new library file arrives as a
     # red on a membership manifest.
     test-strip-premise-multiline-strings = {
-      expr = map (s: s.name) (lib.filter (s: lib.hasInfix "''" s.text) rawSources);
+      expr = map (s: s.name) (lib.filter (s: genPrelude.hasInfix "''" s.text) rawSources);
       expected = [ ];
     };
   };
