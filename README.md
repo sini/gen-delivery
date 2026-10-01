@@ -47,7 +47,7 @@ chain whose only statement anywhere was a gloss in a header comment. It was comp
 
 |                                                                                                        |                                                                                                           |
 | ------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
-| `project { values, cnf, selectNodes }`                                                                 | the flat aspect registry + the per-node build projection, over the include closure of each node's members |
+| `project { values, cnf, selectNodes, deliveryClasses ? {} }`                                           | the flat aspect registry + the per-node build projection, over the include closure of each node's members |
 | `realize { projected, terminals, bindings ? {}, refinements ? {}, layerOrder ? …, extraModules ? {} }` | class-major artifacts, `{ <class>.<node> = artifact; }`                                                   |
 | `defaultLayerOrder`                                                                                    | the contribution-order declaration, readable                                                              |
 
@@ -71,6 +71,26 @@ A member is an aspect **identifier** (its key), resolved through `graphFacts`' `
 naming no aspect, or written as a declaration value, is refused by name. Every refusal fires only
 for a node that reaches the bad include. The order is breadth-first by default, and that default is
 reversible.
+
+### the delivery-class map
+
+`deliveryClasses = { <node> = { <authored class> = <delivery class>; }; }` keys a node's content for
+an authored class under the delivery class it names, so one projection realizes on several
+terminals, for example one per pin. An absent map is `{ }` and an absent entry is the identity.
+Content is still collected by authored class, so one authored class's list moves whole, in closure
+order. `realize` reads only delivery classes, so `extent` and `extraModules` are per delivery class.
+
+The map is data derived from the caller's values, never from the projection. These refuse by name:
+
+- at `project`'s root: a map or an entry that is not an attrset, an entry naming a node the
+  projection does not carry, an authored class not declared `class` in `cnf`, and a target that is
+  not one string. The node set is read only when the map is non-empty;
+- on the node's `classes`: two authored classes **with content** at one node landing in one delivery
+  class, where their contents would merge in one terminal. `bindings` stays readable.
+
+An entry for a class the node has no content for is accepted and changes nothing: a caller cannot
+know where content is without reading the projection. A delivery class with content and no terminal
+is `realize`'s existing refusal.
 
 ### the realization predicate
 

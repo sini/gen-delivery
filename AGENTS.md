@@ -19,13 +19,14 @@ resolver without a fetch, a restated path or a transcribed fold.
 
 |                     | signature                                                                                                                                                                                                           |
 | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `project`           | `{ values, cnf ? null, selectNodes ? null } -> { aspects, nodes }`                                                                                                                                                  |
+| `project`           | `{ values, cnf ? null, selectNodes ? null, deliveryClasses ? {} } -> { aspects, nodes }`; `deliveryClasses` is `{ <node> = { <authored class> = <delivery class>; }; }`                                             |
 | `realize`           | `{ projected, terminals, bindings ? {}, refinements ? {}, layerOrder ? defaultLayerOrder, extraModules ? {} } -> { <class>.<node> = artifact; }`; `extraModules` is class-major, `{ <class>.<node> = [ module ]; }` |
 | `defaultLayerOrder` | `[ "projection" "global" "refinement" ]`                                                                                                                                                                            |
 
 `project.aspects` is the flat registry (`aspects.flatten values.aspects`, empty when there is no
 `aspects` surface). `project.nodes` is the per-node build projection,
-`{ <node> = { bindings = { node = <instance>; }; classes = { <class> = [ deferredModule ]; }; }; }`.
+`{ <node> = { bindings = { node = <instance>; }; classes = { <delivery class> = [ deferredModule ]; }; }; }`,
+keyed by delivery class (the authored class unless `deliveryClasses` readdresses it at that node).
 A consumer may extend an entry with `passthrough`; nothing here emits it.
 
 ## the two refusals, and why they are not one
