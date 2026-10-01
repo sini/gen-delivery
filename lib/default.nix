@@ -184,14 +184,28 @@ let
     + "aspect with a `{ host, ... }:` definition), so none of its parts can be delivered before "
     + "parametric aspects are specified (ADR-0010 section 4); this refusal is interim and replaces a "
     + "silent drop";
+  # Both sides are named "land in" because the identity side was not sent by any entry.
+  deliveryCollisionRefusal =
+    node: dc: authored:
+    "gen-delivery: project: authored classes ${prelude.concatStringsSep ", " authored} at node "
+    + "'${node}' land in one delivery class '${dc}' under deliveryClasses; their contents would merge "
+    + "in one terminal";
 
   # `projectNodes` — the node-keyed reshape of the aspect facts. For each node instance, gather the
   # deferredModules of each class across the INCLUDE CLOSURE of the aspects the node declares
-  # membership in (`node.aspects`). `selectNodes` names WHICH resolved attrset holds the node
-  # instances — a nested registry layout (`fleet.bobbins`) would otherwise project empty under a
-  # hardcoded top-level read. Yields
-  #   { <node> = { bindings = { node = <resolved instance>; }; classes = { <class> = [ <deferredModule> ]; }; }; }
+  # membership in (`node.aspects`). `nodes` is the checked result of the caller's `selectNodes`
+  # (see `project`). Yields
+  #   { <node> = { bindings = { node = <resolved instance>; }; classes = { <delivery class> = [ <deferredModule> ]; }; }; }
   # PURE — no nixpkgs; the deferredModules stay unforced (opaque) until the terminal imports them.
+  #
+  # ── CONTENT IS COLLECTED BY AUTHORED CLASS AND KEYED BY DELIVERY CLASS ──
+  # `deliveryClasses.<node>.<authored class>` names the delivery class that authored class's list
+  # is keyed under at that node; an absent entry is the identity. One authored class's list moves
+  # whole, in closure order, so the map readdresses content and never reorders or splits it. Two
+  # authored classes with content landing in one delivery class would merge in one terminal, so
+  # that refuses by name. The refusal reads content, so it sits on the node's `classes` spine (the
+  # owner of the merge, as `_addressedNodesCheck` sits on its class's), never on the node entry: a
+  # `bindings` read forces no closure.
   #
   # ── THE CLOSURE IS A RECEIVER-ROOTED QUERY, AND gen-aspects STATES ONLY ITS FACTS ──
   # ADR-0010 section 1: a collector is a receiver-rooted query over the aspect graph. It is rooted at
@@ -213,17 +227,8 @@ let
   # (`resolve`), read here and never re-run. A member is an identifier, resolved through the
   # facts' key→id relation (`nodeIdOf`), never by re-rendering the id.
   projectNodes =
-    cnf: selectNodes: values:
+    cnf: deliveryClasses: nodes: values:
     let
-      nodes = selectNodes values;
-      # `selectNodes` is caller-supplied; a non-attrset result would die inside `mapAttrs` as an
-      # anonymous "expected a set" — name the surface, the arg, and the contract instead.
-      _nodesCheck =
-        if builtins.isAttrs nodes then
-          null
-        else
-          throw "gen-delivery: project: selectNodes must return an attrset of node instances ({ <node> = <instance>; }), got ${builtins.typeOf nodes}";
-
       # One facts record per `project` call: each node's sites are a thunk in it, resolved at most
       # once however many nodes reach that node.
       facts = aspects.graphFacts cnf (values.aspects or { });
@@ -280,47 +285,55 @@ let
         else
           entry;
     in
-    builtins.seq _nodesCheck (
-      builtins.mapAttrs (
-        nodeName: inst:
-        let
-          reached = map contentOf (
-            builtins.genericClosure {
-              startSet = map (k: nodeItem (memberId nodeName k)) (inst.aspects or [ ]);
-              operator = succ;
-            }
-          );
-          classNames = dedup (builtins.concatMap (deliveryClassesOf cnf) reached);
-          collectClass =
-            class:
-            builtins.concatMap (
-              entry: if builtins.elem class (deliveryClassesOf cnf entry) then [ entry.${class} ] else [ ]
-            ) reached;
-        in
-        {
-          bindings = {
-            node = inst;
-          };
-          classes = builtins.listToAttrs (
-            map (c: {
-              name = c;
-              value = collectClass c;
-            }) classNames
-          );
-        }
-      ) nodes
-    );
+    builtins.mapAttrs (
+      nodeName: inst:
+      let
+        reached = map contentOf (
+          builtins.genericClosure {
+            startSet = map (k: nodeItem (memberId nodeName k)) (inst.aspects or [ ]);
+            operator = succ;
+          }
+        );
+        authored = dedup (builtins.concatMap (deliveryClassesOf cnf) reached);
+        collectClass =
+          class:
+          builtins.concatMap (
+            entry: if builtins.elem class (deliveryClassesOf cnf entry) then [ entry.${class} ] else [ ]
+          ) reached;
+        entryMap = deliveryClasses.${nodeName} or { };
+        groups = builtins.groupBy (a: entryMap.${a} or a) authored;
+        _collisionCheck = builtins.foldl' (
+          acc: dc:
+          if builtins.length groups.${dc} > 1 then
+            throw (deliveryCollisionRefusal nodeName dc groups.${dc})
+          else
+            acc
+        ) null (builtins.attrNames groups);
+      in
+      {
+        bindings = {
+          node = inst;
+        };
+        classes = builtins.seq _collisionCheck (
+          builtins.mapAttrs (_: as: collectClass (builtins.head as)) groups
+        );
+      }
+    ) nodes;
 
   # `project` — the flat aspect registry plus the per-node build projection. Both keys were
   # published by the dissolving library's compose result; they are this surface's own now.
   #
-  # MIXED door: `values` required; `cnf` and `selectNodes` optional; the set closed.
+  # MIXED door: `values` required; `cnf`, `selectNodes` and `deliveryClasses` optional; the set
+  # closed.
   project =
     args:
     let
-      checked = prelude.checkOptions "gen-delivery.project" [ "values" "cnf" "selectNodes" ] (
-        prelude.checkRequired "gen-delivery.project" [ "values" ] args
-      );
+      checked = prelude.checkOptions "gen-delivery.project" [
+        "values"
+        "cnf"
+        "selectNodes"
+        "deliveryClasses"
+      ] (prelude.checkRequired "gen-delivery.project" [ "values" ] args);
       # The resolved config VALUES of the caller's own evaluation.
       values = checked.values;
       # THE DECLARATION INPUT — the caller's own `mkAspectSchema` argument, arriving BESIDE the
@@ -351,19 +364,66 @@ let
           selectNodes
         else
           throw "gen-delivery: project: no node selector — `selectNodes` is required and has no default. It names WHICH resolved attrset of the caller's values holds the node instances.";
+      # `selectNodes` is caller-supplied; a non-attrset result would die inside `mapAttrs` as an
+      # anonymous "expected a set" — name the surface, the arg, and the contract instead. Checked
+      # HERE, once, so every reader of the node set (the projection and the map's node check below)
+      # meets this refusal first and none of them blames its own input for the selector's fault.
+      nodes =
+        let
+          selected = selector values;
+        in
+        if builtins.isAttrs selected then
+          selected
+        else
+          throw "gen-delivery: project: selectNodes must return an attrset of node instances ({ <node> = <instance>; }), got ${builtins.typeOf selected}";
+      # `{ <node> = { <authored class> = <delivery class>; }; }` — the delivery-class map. An absent
+      # field is `{ }` and an absent entry the identity, so a caller passing no map projects exactly
+      # as before. It is DATA derived from the caller's values, never from this projection's output.
+      deliveryClasses = checked.deliveryClasses or { };
+      # THE MAP'S DOORS, forced at the root beside `declaration` because they read only the map, the
+      # declaration and the node set. The node set is read only when the map is non-empty, so an
+      # empty map reads neither `values` nor `selectNodes` and nothing here fires on the size of the
+      # input. An entry for a class the node has no content for is ACCEPTED: the caller cannot know
+      # where content is without reading the projection, which the domain restriction forbids.
+      _deliveryClassesCheck =
+        if !(builtins.isAttrs deliveryClasses) then
+          throw "gen-delivery: project: deliveryClasses must be an attrset { <node> = { <authored class> = <delivery class>; }; }, got ${builtins.typeOf deliveryClasses}"
+        else
+          builtins.foldl' (
+            acc: n:
+            let
+              e = deliveryClasses.${n};
+            in
+            if !(builtins.isAttrs e) then
+              throw "gen-delivery: project: deliveryClasses.${n} must be an attrset { <authored class> = <delivery class>; }, got ${builtins.typeOf e}"
+            else if !(nodes ? ${n}) then
+              throw "gen-delivery: project: deliveryClasses names node '${n}', which the projection does not carry; the entry would readdress nothing"
+            else
+              builtins.foldl' (
+                acc': a:
+                if aspects.keyCategory declaration a != "class" then
+                  throw "gen-delivery: project: deliveryClasses.${n}.${a} readdresses '${a}', which is not declared category \"class\" in cnf"
+                else if !(builtins.isString e.${a}) then
+                  throw "gen-delivery: project: deliveryClasses.${n}.${a} must be one delivery class name (a string), got ${builtins.typeOf e.${a}}; an authored class is delivered to exactly one delivery class"
+                else
+                  acc'
+              ) acc (builtins.attrNames e)
+          ) null (builtins.attrNames deliveryClasses);
       registry = if values ? aspects then aspects.flatten values.aspects else { };
     in
     builtins.seq checked (
-      builtins.seq declaration {
-        # The FLAT aspect registry (keyed by aspect path): each entry carries its per-class
-        # deferredModule fields. The deferredModules are inspectable but unforced, so class bodies
-        # cross into a target's evaluation unevaluated. Absent an `aspects` surface, this is empty.
-        aspects = registry;
+      builtins.seq declaration (
+        builtins.seq _deliveryClassesCheck {
+          # The FLAT aspect registry (keyed by aspect path): each entry carries its per-class
+          # deferredModule fields. The deferredModules are inspectable but unforced, so class bodies
+          # cross into a target's evaluation unevaluated. Absent an `aspects` surface, this is empty.
+          aspects = registry;
 
-        # The per-node build projection — a node-keyed reshape of the flat registry, driven by each
-        # node's `aspects` membership. This is what the terminal builds from.
-        nodes = projectNodes declaration selector values;
-      }
+          # The per-node build projection — a node-keyed reshape of the flat registry, driven by each
+          # node's `aspects` membership. This is what the terminal builds from.
+          nodes = projectNodes declaration deliveryClasses nodes values;
+        }
+      )
     );
 
   # `realize` — the terminal registry fold. PURE (builtins only, no nixpkgs). It turns a `project`

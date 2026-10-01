@@ -107,6 +107,64 @@ let
     + "parametric aspects are specified (ADR-0010 section 4); this refusal is interim and replaces a "
     + "silent drop";
 
+  # ── THE DELIVERY-CLASS MAP'S REFUSALS ── nodes a, b, c carry T content (`web`); `withU` adds U
+  # content (`extra`) at a. The expression deep-forces the realization, so a refusal on any spine
+  # surfaces.
+  mapped =
+    {
+      deliveryClasses,
+      withU ? false,
+      terminals ? {
+        T1 = _: 1;
+        T2 = _: 2;
+      },
+      selectNodes ? v: v.hosts,
+    }:
+    let
+      cnf.keySemantics = {
+        T.category = "class";
+        U.category = "class";
+      };
+      values =
+        (genMerge.evalModuleTree {
+          modules = [
+            ((aspects.mkAspectSchema cnf).mkAspectModule { })
+            {
+              options.hosts = genMerge.mkOption {
+                type = genMerge.types.attrsOf genMerge.types.raw;
+                default = { };
+              };
+            }
+            {
+              aspects.web.T.marks = [ "web" ];
+              aspects.extra.U.marks = [ "u" ];
+              hosts = {
+                a.aspects = [ "web" ] ++ (if withU then [ "extra" ] else [ ]);
+                b.aspects = [ "web" ];
+                c.aspects = [ "web" ];
+              };
+            }
+          ];
+        }).config;
+      r = genDelivery.realize {
+        projected = genDelivery.project {
+          inherit
+            values
+            cnf
+            selectNodes
+            deliveryClasses
+            ;
+        };
+        inherit terminals;
+      };
+    in
+    builtins.deepSeq r r;
+  pinMap = {
+    a.T = "T1";
+    b.T = "T1";
+    c.T = "T2";
+  };
+
   # The address fixture: `n` carries a and b content, `m` carries b only; terminals a and b.
   addressed =
     extraModules:
@@ -292,6 +350,97 @@ in
       expectedError.msg = exactly guardLeaf;
     };
 
+    # ── THE DELIVERY-CLASS MAP: each door names its subject ──
+    # E1–E5 are forced at `project`'s root; E6/E7 on the node's `classes` spine; E8 is realize's
+    # existing content check, re-asserted under the map.
+    test-delivery-classes-not-an-attrset-refuses-by-name = {
+      expr = mapped { deliveryClasses = "T1"; };
+      expectedError.msg = exactly "gen-delivery: project: deliveryClasses must be an attrset { <node> = { <authored class> = <delivery class>; }; }, got string";
+    };
+    test-delivery-classes-entry-not-an-attrset-refuses-by-name = {
+      expr = mapped {
+        deliveryClasses = pinMap // {
+          a = "T1";
+        };
+      };
+      expectedError.msg = exactly "gen-delivery: project: deliveryClasses.a must be an attrset { <authored class> = <delivery class>; }, got string";
+    };
+    test-delivery-classes-unknown-node-refuses-by-name = {
+      expr = mapped {
+        deliveryClasses = pinMap // {
+          z.T = "T1";
+        };
+      };
+      expectedError.msg = exactly "gen-delivery: project: deliveryClasses names node 'z', which the projection does not carry; the entry would readdress nothing";
+    };
+    # A selector returning a non-attrset is the SELECTOR's fault, so the map's node check must not
+    # fire first and blame the entry.
+    test-delivery-classes-bad-selector-names-the-selector = {
+      expr = mapped {
+        deliveryClasses = pinMap;
+        selectNodes = _: "oops";
+      };
+      expectedError.msg = exactly "gen-delivery: project: selectNodes must return an attrset of node instances ({ <node> = <instance>; }), got string";
+    };
+    test-delivery-classes-undeclared-class-refuses-by-name = {
+      expr = mapped {
+        deliveryClasses = pinMap // {
+          a = {
+            T = "T1";
+            marks = "T1";
+          };
+        };
+      };
+      expectedError.msg = exactly "gen-delivery: project: deliveryClasses.a.marks readdresses 'marks', which is not declared category \"class\" in cnf";
+    };
+    test-delivery-classes-non-string-target-refuses-by-name = {
+      expr = mapped {
+        deliveryClasses = pinMap // {
+          a.T = [
+            "T1"
+            "T2"
+          ];
+        };
+      };
+      expectedError.msg = exactly "gen-delivery: project: deliveryClasses.a.T must be one delivery class name (a string), got list; an authored class is delivered to exactly one delivery class";
+    };
+    test-delivery-classes-two-entries-landing-together-refuse-by-name = {
+      expr = mapped {
+        withU = true;
+        deliveryClasses = pinMap // {
+          a = {
+            T = "T1";
+            U = "T1";
+          };
+        };
+      };
+      expectedError.msg = exactly "gen-delivery: project: authored classes T, U at node 'a' land in one delivery class 'T1' under deliveryClasses; their contents would merge in one terminal";
+    };
+    # One side is the identity: U was not sent by an entry, and T lands on it.
+    test-delivery-classes-entry-landing-on-the-identity-refuses-by-name = {
+      expr = mapped {
+        withU = true;
+        deliveryClasses = pinMap // {
+          a.T = "U";
+        };
+        terminals = {
+          U = _: 0;
+          T1 = _: 1;
+          T2 = _: 2;
+        };
+      };
+      expectedError.msg = exactly "gen-delivery: project: authored classes T, U at node 'a' land in one delivery class 'U' under deliveryClasses; their contents would merge in one terminal";
+    };
+    test-delivery-classes-missing-entry-refuses-at-the-content-check = {
+      expr = mapped {
+        deliveryClasses = {
+          a.T = "T1";
+          b.T = "T1";
+        };
+      };
+      expectedError.msg = exactly "gen-delivery: realize: node c carries declared T content, and class T has no terminal — the content would be dropped";
+    };
+
     # ── THE DOOR CHECKS (den-hoag-7gp66 P1): each refusal names the door, then the primitive ──
     # `ci/tests/doors.nix` pins that these are catchable; these pin WHICH refusal fired.
     test-project-missing-required-field-names-the-door = {
@@ -303,7 +452,7 @@ in
         values = { };
         notAnOption = 1;
       };
-      expectedError.msg = exactly "gen-delivery.project: 'notAnOption' is not an option of this door; the options are closed (accepted: 'values', 'cnf', 'selectNodes') (in prelude.checkOptions)";
+      expectedError.msg = exactly "gen-delivery.project: 'notAnOption' is not an option of this door; the options are closed (accepted: 'values', 'cnf', 'selectNodes', 'deliveryClasses') (in prelude.checkOptions)";
     };
     test-project-non-set-names-the-door = {
       expr = genDelivery.project 1;
