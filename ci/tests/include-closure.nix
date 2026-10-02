@@ -59,11 +59,9 @@ let
 
   refuses = e: !(builtins.tryEval (builtins.deepSeq e e)).success;
 
-  hostFn =
-    { host, ... }:
-    {
-      nixos.marks = [ host.name ];
-    };
+  # A parametric aspect is a first-order guard: a context closure is refused upstream by gen-aspects
+  # (den-hoag-lwbb1 stage 2b), so the shape that still reaches delivery's own refusals is a guard.
+  hostFn = aspects.guard (aspects.pred.has "host") { nixos.marks = [ "host" ]; };
   diamond = {
     aspects.base.nixos.marks = [ "base" ];
     aspects.ssh.includes = [ "base" ];
@@ -486,9 +484,9 @@ in
     };
 
     # ── G9j / G9j′: a PARAMETRIC node refuses where it is reached (interim) ──
-    # A `{ host, ... }:` definition beside an attrset one folds the whole aspect into a guard carrier,
-    # static part included; as the only definition it is a wrapped function. Neither can be
-    # delivered, and both used to be dropped with no message.
+    # A guard definition beside an attrset one folds the whole aspect into a guard carrier, static
+    # part included; as the only definition it is a guard leaf. Neither can be delivered, and both
+    # used to be dropped with no message.
     test-parametric-node-refuses-when-reached =
       let
         split =

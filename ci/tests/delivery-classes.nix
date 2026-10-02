@@ -35,11 +35,8 @@ let
         {
           aspects.web.T.marks = [ "web" ];
           aspects.extra.U.marks = [ "u" ];
-          aspects.p =
-            { host, ... }:
-            {
-              T.marks = [ host.name ];
-            };
+          # parametric: a first-order guard (a context closure is refused upstream by gen-aspects)
+          aspects.p = aspects.guard (aspects.pred.has "host") { T.marks = [ "p" ]; };
           hosts = builtins.mapAttrs (_: m: { aspects = m; }) members;
         }
       ];
