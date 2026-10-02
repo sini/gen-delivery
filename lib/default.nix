@@ -173,15 +173,16 @@ let
   sealedIncludeRefusal =
     id: at:
     "gen-delivery: project: aspect '${id}' carries at include position ${at} parametric content (a "
-    + "guard, a wrapped function or a deferred include), which delivery cannot evaluate before "
+    + "guard), which delivery cannot evaluate before "
     + "parametric aspects are specified (ADR-0010 section 4)";
-  # INTERIM (the OQ4 ruling's arm b): a node that IS parametric, either `{ host, ... }:` as its only
+  # INTERIM (the OQ4 ruling's arm b): a node that IS parametric, either a guard as its only
   # definition or as one of several (which folds the whole aspect, its static parts included, into
-  # a guard carrier), is refused by name until parametric content can be delivered.
+  # a guard carrier), is refused by name until parametric content can be delivered. A context closure
+  # never reaches here: gen-aspects refuses it upstream, naming the gen-rules door.
   guardLeafRefusal =
     id:
-    "gen-delivery: project: aspect '${id}' is parametric (a guard or a wrapped function, including an "
-    + "aspect with a `{ host, ... }:` definition), so none of its parts can be delivered before "
+    "gen-delivery: project: aspect '${id}' is parametric (a guard, including an "
+    + "aspect with a guard definition beside others), so none of its parts can be delivered before "
     + "parametric aspects are specified (ADR-0010 section 4); this refusal is interim and replaces a "
     + "silent drop";
   # Both sides are named "land in" because the identity side was not sent by any entry.

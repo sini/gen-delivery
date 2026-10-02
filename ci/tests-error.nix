@@ -83,11 +83,26 @@ let
         inherit values cnf;
         selectNodes = v: v.hosts;
       }).nodes.server.classes;
+  # A context closure: gen-aspects refuses it upstream (den-hoag-lwbb1 stage 2b), naming the gen-rules
+  # door, before delivery reads it. The parametric shape that still reaches delivery's own refusals is
+  # a first-order guard, `hostGuard`.
   hostFn =
     { host, ... }:
     {
       nixos.marks = [ host.name ];
     };
+  hostGuard = aspects.guard (aspects.pred.has "host") { nixos.marks = [ "host" ]; };
+  # gen-aspects' bare-closure refusal at `loc`, the text a user meets for a context closure.
+  upstreamClosureRefusal =
+    loc:
+    "gen-aspects: aspect `${loc}`: a context closure reached a gen-aspects-typed position. gen-aspects "
+    + "holds first-order guards only; a closure crosses the gen-rules door. Declare the aspect through the "
+    + "framework's surface, so that gen-rules' lowering turns the closure into a door node, or write it as a "
+    + "guard term (`guard (pred.has <coordinate>) <body>`). If the closure sits in the result of a module "
+    + "function written at an aspect position (`{ config, ... }: { includes = [ ({ host, ... }: …) ]; }`), the "
+    + "framework's surface does not reach it: the lowering does not enter a module function's result, so the "
+    + "closure arrived here unlowered, and no first-order route reaches it there. A closure that reads none "
+    + "of the module function's arguments can be written beside the function instead of inside it.";
 
   memberUnknown = "gen-delivery: project: node 'server' names aspect 'ghost' as a member, and no aspect has that key";
   memberNotIdentifier =
@@ -99,11 +114,11 @@ let
   sealedInclude =
     position:
     "gen-delivery: project: aspect 'a' carries at include position ${position} parametric content (a "
-    + "guard, a wrapped function or a deferred include), which delivery cannot evaluate before "
+    + "guard), which delivery cannot evaluate before "
     + "parametric aspects are specified (ADR-0010 section 4)";
   guardLeaf =
-    "gen-delivery: project: aspect 'p' is parametric (a guard or a wrapped function, including an "
-    + "aspect with a `{ host, ... }:` definition), so none of its parts can be delivered before "
+    "gen-delivery: project: aspect 'p' is parametric (a guard, including an "
+    + "aspect with a guard definition beside others), so none of its parts can be delivered before "
     + "parametric aspects are specified (ADR-0010 section 4); this refusal is interim and replaces a "
     + "silent drop";
 
@@ -315,8 +330,15 @@ in
           ];
       expectedError.msg = exactly foreignInclude;
     };
+    # A context closure at an include position is refused UPSTREAM, by gen-aspects, naming the door;
+    # the user still meets a named refusal for this input.
     test-sealed-include-names-the-position = {
       expr = closureClasses [ "a" ] [ { aspects.a.includes = [ hostFn ]; } ];
+      expectedError.msg = exactly (upstreamClosureRefusal "a.includes.[definition 1-entry 1]");
+    };
+    # The shape that reaches delivery's own sealed-include refusal: a guard at the include position.
+    test-sealed-guard-include-names-the-position = {
+      expr = closureClasses [ "a" ] [ { aspects.a.includes = [ hostGuard ]; } ];
       expectedError.msg = exactly (sealedInclude "0");
     };
     # At depth, the position is the path of indices through each level's `includes`.
@@ -337,6 +359,27 @@ in
               ];
             }
           ];
+      expectedError.msg = exactly (
+        upstreamClosureRefusal "a.includes.[definition 1-entry 1].includes.[definition 1-entry 2]"
+      );
+    };
+    test-nested-sealed-guard-include-names-the-position-path = {
+      expr =
+        closureClasses
+          [ "a" ]
+          [
+            {
+              aspects.a.includes = [
+                {
+                  nixos.marks = [ "i" ];
+                  includes = [
+                    { nixos.marks = [ "j" ]; }
+                    hostGuard
+                  ];
+                }
+              ];
+            }
+          ];
       expectedError.msg = exactly (sealedInclude "0.1");
     };
     test-parametric-node-names-it-and-the-interim = {
@@ -346,6 +389,16 @@ in
           [
             { aspects.p.nixos.marks = [ "attr" ]; }
             { aspects.p = hostFn; }
+          ];
+      expectedError.msg = exactly (upstreamClosureRefusal "p");
+    };
+    test-parametric-guard-node-names-it-and-the-interim = {
+      expr =
+        closureClasses
+          [ "p" ]
+          [
+            { aspects.p.nixos.marks = [ "attr" ]; }
+            { aspects.p = hostGuard; }
           ];
       expectedError.msg = exactly guardLeaf;
     };
