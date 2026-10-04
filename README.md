@@ -71,11 +71,11 @@ members, in declared order:
   `project` reads the relation and never mints an instance;
 - where the relation lists no instance, the reach **refuses by name**: a scope it was never handed
   (no `instances`, or a node missing from `reaches`) and a guard carrier by the no-instance door; a
-  first-order guard in a handed scope as **undecided**. That last refusal is interim
-  (den-hoag-n8wb5): the relation does not publish whether the producer declined the guard (its
-  condition FALSE) or never walked it (a member omitted from the scope, other sources, another
-  tree), and delivering nothing would silently drop a TRUE guard in the second case. Once
-  gen-aspects publishes the declined set, a declined guard delivers nothing (ADR-0019);
+  first-order guard in a handed scope as **undecided**. That last refusal is interim: the relation
+  does not publish whether the producer declined the guard (its condition FALSE) or never walked it
+  (a member omitted from the scope, other sources, another tree), and delivering nothing would
+  silently drop a TRUE guard in the second case. Once gen-aspects publishes the declined set, a
+  declined guard delivers nothing, as an edge whose condition is off is no edge at all;
 - **parametric content with no declaration** (a guard written at an include position, or a named
   guard included by value) is refused by name: the relation can hold no instance of it. A
   `{ host, ... }:` include is refused upstream by gen-aspects.
