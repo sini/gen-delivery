@@ -490,11 +490,27 @@ in
     };
 
     # ── THE PROJECTION-PARITY DOOR ──
-    # S1: an emptied query refuses by the second arm, naming the least vertex `na`'s walk delivers.
+    # S1: an emptied query refuses by the second arm, naming the least vertex `na`'s walk delivers:
+    # `web`, `ha`, and the instances the relation lists at `na` and inside them. The expectation reads
+    # the facts and the relation, never `project`, so a broken projection reds this cell alone.
     # RED (the walk alone, no query read): `na` delivers `[ web, inst ×4, ha ]` at rc 0.
     test-emptied-query-names-the-parity-door = {
       expr = fxEmptied.withRel.nodes.na.elementIds;
-      expectedError.msg = exactly (parity "na" (least fx.withRel.nodes.na.elementIds.nixos) false);
+      expectedError.msg =
+        let
+          listedIn = e: builtins.concatLists (builtins.attrValues e);
+          atNa = listedIn fx.rel.reaches.na;
+        in
+        exactly (
+          parity "na" (least (
+            [
+              (fx.factIdOf "web")
+              (fx.factIdOf "ha")
+            ]
+            ++ atNa
+            ++ builtins.concatMap (i: listedIn (fx.rel.nested.${i} or { })) atNa
+          )) false
+        );
     };
     # S3: an instance `reaches.na` lists and `na`'s include sites never reach refuses by the first
     # arm, naming the least over-listed vertex (`ei@nei` or an instance nested in it). RED (the walk
