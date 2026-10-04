@@ -23,8 +23,8 @@ let
   valuesOf = valuesWith cnf;
   valuesWith =
     c: mods:
-    (genMerge.evalModuleTree {
-      modules = [
+    (genMerge.evalModuleTree { } (
+      [
         ((aspects.mkAspectSchema c).mkAspectModule { })
         {
           options.hosts = genMerge.mkOption {
@@ -33,8 +33,8 @@ let
           };
         }
       ]
-      ++ mods;
-    }).config;
+      ++ mods
+    )).config;
 
   values = valuesOf mods;
   mods = [
@@ -221,9 +221,9 @@ let
     );
   marksOf =
     projected: n:
-    (genMerge.evalModuleTree {
-      modules = [ { freeformType = t.lazyAttrsOf t.anything; } ] ++ projected.nodes.${n}.classes.nixos;
-    }).config.marks;
+    (genMerge.evalModuleTree { } (
+      [ { freeformType = t.lazyAttrsOf t.anything; } ] ++ projected.nodes.${n}.classes.nixos
+    )).config.marks;
   projectWith = projectOf values;
   withView =
     view:

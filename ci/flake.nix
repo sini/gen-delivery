@@ -69,13 +69,13 @@
           hostSchema = {
             options.hosts = genSchema.mkInstanceRegistry hostKinds.host { };
           };
-          evaluated = genMerge.evalModuleTree {
-            modules = [
+          evaluated = genMerge.evalModuleTree { } (
+            [
               { options.aspects = schema.mkAspectOption { }; }
               hostSchema
             ]
-            ++ modules;
-          };
+            ++ modules
+          );
         in
         {
           inherit cnf;

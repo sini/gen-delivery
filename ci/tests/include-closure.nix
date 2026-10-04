@@ -32,8 +32,8 @@ let
   # other than a string (the declaration-member cell) and reach `project` as written.
   tree =
     cnf: mods:
-    (genMerge.evalModuleTree {
-      modules = [
+    (genMerge.evalModuleTree { } (
+      [
         ((aspects.mkAspectSchema cnf).mkAspectModule { })
         {
           options.hosts = genMerge.mkOption {
@@ -42,8 +42,8 @@ let
           };
         }
       ]
-      ++ mods;
-    }).config;
+      ++ mods
+    )).config;
   server = members: mods: tree cnf ([ { hosts.server.aspects = members; } ] ++ mods);
 
   projectWith =
@@ -58,9 +58,7 @@ let
       projected = projectWith cnf values;
       terminals.nixos =
         { modules, ... }:
-        (genMerge.evalModuleTree {
-          modules = [ { freeformType = t.lazyAttrsOf t.anything; } ] ++ modules;
-        }).config;
+        (genMerge.evalModuleTree { } ([ { freeformType = t.lazyAttrsOf t.anything; } ] ++ modules)).config;
     };
   marksWith = cnf: values: (realized cnf values).nixos.server.marks;
   marks = marksWith cnf;

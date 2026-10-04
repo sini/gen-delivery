@@ -73,8 +73,8 @@ let
     let
       cnf.keySemantics.nixos.category = "class";
       values =
-        (genMerge.evalModuleTree {
-          modules = [
+        (genMerge.evalModuleTree { } (
+          [
             ((aspects.mkAspectSchema cnf).mkAspectModule { })
             {
               options.hosts = genMerge.mkOption {
@@ -84,8 +84,8 @@ let
             }
             { hosts.server.aspects = members; }
           ]
-          ++ mods;
-        }).config;
+          ++ mods
+        )).config;
     in
     builtins.attrNames
       (genDelivery.project {
@@ -176,26 +176,24 @@ let
         U.category = "class";
       };
       values =
-        (genMerge.evalModuleTree {
-          modules = [
-            ((aspects.mkAspectSchema cnf).mkAspectModule { })
-            {
-              options.hosts = genMerge.mkOption {
-                type = genMerge.types.attrsOf genMerge.types.raw;
-                default = { };
-              };
-            }
-            {
-              aspects.web.T.marks = [ "web" ];
-              aspects.extra.U.marks = [ "u" ];
-              hosts = {
-                a.aspects = [ "web" ] ++ (if withU then [ "extra" ] else [ ]);
-                b.aspects = [ "web" ];
-                c.aspects = [ "web" ];
-              };
-            }
-          ];
-        }).config;
+        (genMerge.evalModuleTree { } [
+          ((aspects.mkAspectSchema cnf).mkAspectModule { })
+          {
+            options.hosts = genMerge.mkOption {
+              type = genMerge.types.attrsOf genMerge.types.raw;
+              default = { };
+            };
+          }
+          {
+            aspects.web.T.marks = [ "web" ];
+            aspects.extra.U.marks = [ "u" ];
+            hosts = {
+              a.aspects = [ "web" ] ++ (if withU then [ "extra" ] else [ ]);
+              b.aspects = [ "web" ];
+              c.aspects = [ "web" ];
+            };
+          }
+        ]).config;
       r = genDelivery.realize {
         projected = genDelivery.project {
           inherit

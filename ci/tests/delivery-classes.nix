@@ -23,24 +23,22 @@ let
 
   values =
     members:
-    (genMerge.evalModuleTree {
-      modules = [
-        ((aspects.mkAspectSchema cnf).mkAspectModule { })
-        {
-          options.hosts = genMerge.mkOption {
-            type = t.attrsOf t.raw;
-            default = { };
-          };
-        }
-        {
-          aspects.web.T.marks = [ "web" ];
-          aspects.extra.U.marks = [ "u" ];
-          # parametric: a first-order guard (a context closure is refused upstream by gen-aspects)
-          aspects.p = aspects.guard (aspects.pred.has "host") { T.marks = [ "p" ]; };
-          hosts = builtins.mapAttrs (_: m: { aspects = m; }) members;
-        }
-      ];
-    }).config;
+    (genMerge.evalModuleTree { } [
+      ((aspects.mkAspectSchema cnf).mkAspectModule { })
+      {
+        options.hosts = genMerge.mkOption {
+          type = t.attrsOf t.raw;
+          default = { };
+        };
+      }
+      {
+        aspects.web.T.marks = [ "web" ];
+        aspects.extra.U.marks = [ "u" ];
+        # parametric: a first-order guard (a context closure is refused upstream by gen-aspects)
+        aspects.p = aspects.guard (aspects.pred.has "host") { T.marks = [ "p" ]; };
+        hosts = builtins.mapAttrs (_: m: { aspects = m; }) members;
+      }
+    ]).config;
 
   staticMembers = {
     a = [ "web" ];
@@ -71,9 +69,8 @@ let
     {
       inherit pin;
       marks =
-        (genMerge.evalModuleTree {
-          modules = [ { freeformType = t.lazyAttrsOf t.anything; } ] ++ modules;
-        }).config.marks;
+        (genMerge.evalModuleTree { } ([ { freeformType = t.lazyAttrsOf t.anything; } ] ++ modules))
+        .config.marks;
       peers = builtins.attrNames extent;
     };
   realizeWith =
