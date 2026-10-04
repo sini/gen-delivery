@@ -113,7 +113,7 @@ let
     + "closure arrived here unlowered, and no first-order route reaches it there. A closure that reads none "
     + "of the module function's arguments can be written beside the function instead of inside it.";
 
-  instancesShape = "gen-delivery: project: instances must be gen-aspects' instance relation { vertices; instantiates; reaches; nested; }, each an attrset";
+  instancesShape = "gen-delivery: project: instances must be gen-aspects' instance relation { vertices; instantiates; reaches; nested; declined = { reaches; nested; }; }, each an attrset";
   memberUnknown = "gen-delivery: project: node 'server' names aspect 'ghost' as a member, and no aspect has that key";
   memberNotIdentifier =
     "gen-delivery: project: node 'server' lists a member that is not an aspect identifier (a set); "
@@ -123,9 +123,10 @@ let
     + "this tree does not hold; project delivers only what it can reach, so federate the trees first";
   sealedInclude =
     position:
-    "gen-delivery: project: aspect 'a' carries at include position ${position} parametric content (a "
-    + "guard) that is not a declared aspect, so the instance relation can hold no instance of it; "
-    + "declare it as a named aspect and include it by key";
+    "gen-delivery: project: aspect 'a' carries at include position ${position} an element that is "
+    + "neither a reference to an aspect nor inline aspect content: a guard there is not a declared "
+    + "aspect, so the instance relation can hold no instance of it (declare it as a named aspect and "
+    + "include it by key), and any other value (a list, a number) is not an aspect";
   noInstance =
     node: a: inst:
     "gen-delivery: project: node '${node}' reaches parametric aspect '${a}'"
@@ -135,8 +136,13 @@ let
     node: a: inst:
     "gen-delivery: project: node '${node}' reaches parametric aspect '${a}'"
     + (if inst == null then "" else " inside instance '${inst}'")
-    + ", and the instance relation lists no instance of it there; the relation does not publish whether "
-    + "the guard was declined, so the reach is undecided and refuses (interim, until den-hoag-n8wb5)";
+    + ", and the instance relation neither lists an instance of it there nor declined it: either the "
+    + "relation never walked it there (it was minted over other members or another tree than project "
+    + "reads), or its condition read a coordinate the scope does not supply under the open world "
+    + "(declare the coordinate set to make that absence FALSE)";
+  declinedNotList =
+    scope: t:
+    "gen-delivery: project: the instance relation's declined aspects at '${scope}' must be a list of aspect ids, got ${t}";
   # The parametric fixture's views, each planted with one fault on `na`'s edge to `p`.
   pAtNa = fx.iidOf "na" "p";
   plant = view: fx.withView (fx.rel // view) "na";
@@ -456,9 +462,9 @@ in
       expr = fx.mW "nmiss";
       expectedError.msg = exactly (noInstance "nmiss" "p" null);
     };
-    # K1 (interim, den-hoag-n8wb5): an empty reach in a handed scope refuses as undecided, whether the
-    # guard's condition is FALSE there (`nh`, `nhe` nested) or its member was omitted from the scope
-    # (`nomit`, a TRUE guard).
+    # den-hoag-n8wb5, the undecided door under the OPEN world: `has user` over a scope with no user is
+    # refused by the evaluator (R), so the relation neither lists nor declines `hm` (`nh`, `nhe`
+    # nested); `nomit`'s TRUE `p` was never walked, its member omitted from the scope.
     test-condition-false-reach-names-the-undecided-door = {
       expr = fx.mW "nh";
       expectedError.msg = exactly (undecided "nh" "hm" null);
@@ -470,6 +476,36 @@ in
     test-omitted-member-names-the-undecided-door = {
       expr = fx.mW "nomit";
       expectedError.msg = exactly (undecided "nomit" "p" null);
+    };
+    # den-hoag-n8wb5: under the closed world the omitted member still names the undecided door (it was
+    # never walked), and a declined list that is not a list names its own door.
+    test-omitted-member-closed-world-names-the-undecided-door = {
+      expr = fx.mCw "nomit";
+      expectedError.msg = exactly (undecided "nomit" "p" null);
+    };
+    # Arm 1 needs the scope's edge entry: an instance with no `nested` entry meets the no-instance
+    # door even where `declined.nested` lists the id (a hand-built or sliced relation).
+    # RED (arm 1 read before the entry check): `nhe` delivers `[ eu ]`.
+    test-declined-without-an-edge-entry-names-the-no-instance-door =
+      let
+        eu = builtins.head fx.relCw.reaches.nhe.eu;
+      in
+      {
+        expr = fx.withViewCw (fx.relCw // { nested = removeAttrs fx.relCw.nested [ eu ]; }) "nhe";
+        expectedError.msg = exactly (noInstance "nhe" "hm" eu);
+      };
+    test-declined-not-a-list-names-the-door = {
+      expr = fx.withViewCw (
+        fx.relCw
+        // {
+          declined = fx.relCw.declined // {
+            reaches = fx.relCw.declined.reaches // {
+              nh = "hm";
+            };
+          };
+        }
+      ) "nh";
+      expectedError.msg = exactly (declinedNotList "nh" "string");
     };
     # K1's boundary: a carrier (`s`, split) admits every tuple, so no listed instance in a handed
     # scope is never a FALSE condition; it refuses.

@@ -581,15 +581,60 @@ in
         closureRefuses = true;
       };
     };
-    # K1 (interim, den-hoag-n8wb5): an empty reach in a HANDED scope refuses as undecided, since the
-    # relation does not publish whether the guard was declined. `nh` (no users) reaches `has user`
-    # `hm` directly, `nhe` nested in `eu`; `nomit` reaches TRUE `p`, a member its handed scope omits.
-    # Controls: `nhu`, with a user descendant, and `nhanded`, with `p` handed, deliver.
+    # den-hoag-n8wb5: a reach the relation DECLINED (its condition resolved FALSE there) is no edge
+    # (ADR-0019): under the closed world `nh` (no users) reaches `has user` `hm` directly and receives
+    # only `home`; `nhe` receives `eu`, its nested `hm` declined at `eu`'s tuple. `nomit` reaches TRUE
+    # `p`, a member its handed scope omits: never walked, so undecided, and it refuses (read on the
+    # `classes` spine, where a delivered nothing is an empty set and not an uncatchable missing class).
+    # Controls: `nhu`
+    # (a user descendant) and `nhanded` (`p` handed) deliver. RED (head: the retired refusal): `direct`
+    # and `nested` refuse; (seed: absence reads as declined): `omittedMember` = false.
+    test-declined-reach-delivers-nothing = {
+      expr = {
+        direct = fx.mCw "nh";
+        nested = fx.mCw "nhe";
+        omittedMember = refuses fx.withRelCw.nodes.nomit.classes;
+        conditionTrue = fx.mCw "nhu";
+        memberHanded = fx.mCw "nhanded";
+      };
+      expected = {
+        direct = [ "home" ];
+        nested = [ "eu" ];
+        omittedMember = true;
+        conditionTrue = [
+          "home"
+          "hm"
+        ];
+        memberHanded = [ "p" ];
+      };
+    };
+    # ADR-0019: `nh`'s `home` includes the declined `hm`, and it projects exactly what `home` without
+    # that include projects, class set and marks. RED (head: the interim refusal): refused.
+    test-declined-reach-equals-an-absent-include = {
+      expr =
+        let
+          a = fx.withRelCw;
+          b = fx.withoutHmCw;
+        in
+        {
+          same =
+            builtins.attrNames a.nodes.nh.classes == builtins.attrNames b.nodes.nh.classes
+            && fx.marksOf a "nh" == fx.marksOf b "nh";
+          marks = fx.marksOf a "nh";
+        };
+      expected = {
+        same = true;
+        marks = [ "home" ];
+      };
+    };
+    # Under the OPEN world (no declared coordinate set) `has user` over a scope with no user is refused
+    # by the evaluator (R): the relation neither lists nor declines `hm`, so the reach refuses, as the
+    # omitted member does. RED (a producer that reads R as FALSE): `direct` and `nested` deliver.
     test-empty-reach-in-a-handed-scope-refuses = {
       expr = {
         direct = refuses (fx.mW "nh");
         nested = refuses (fx.mW "nhe");
-        omittedMember = refuses (fx.mW "nomit");
+        omittedMember = refuses fx.withRel.nodes.nomit.classes;
         conditionTrue = fx.mW "nhu";
         memberHanded = fx.mW "nhanded";
       };

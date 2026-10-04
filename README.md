@@ -69,23 +69,30 @@ members, in declared order:
   `nested.<instance>.<aspect>` lists. Each instance delivers its vertex's `entry`, and its includes are
   followed the same way. A static aspect is always walked at node scope, wherever it is reached.
   `project` reads the relation and never mints an instance;
-- where the relation lists no instance, the reach **refuses by name**: a scope it was never handed
-  (no `instances`, or a node missing from `reaches`) and a guard carrier by the no-instance door; a
-  first-order guard in a handed scope as **undecided**. That last refusal is interim: the relation
-  does not publish whether the producer declined the guard (its condition FALSE) or never walked it
-  (a member omitted from the scope, other sources, another tree), and delivering nothing would
-  silently drop a TRUE guard in the second case. Once gen-aspects publishes the declined set, a
-  declined guard delivers nothing, as an edge whose condition is off is no edge at all;
-- **parametric content with no declaration** (a guard written at an include position, or a named
-  guard included by value) is refused by name: the relation can hold no instance of it. A
+- where the relation lists no instance, the reach reads the relation's **decision**, `declined`: a
+  guard the relation declined there (its condition decided FALSE at every tuple tried) **delivers
+  nothing**, as an edge whose condition is off is no edge at all. Otherwise the reach **refuses by
+  name**: a scope it was never handed (no `instances`, a node missing from `reaches`) and a guard
+  carrier by the no-instance door; a first-order guard in a handed scope that the relation neither
+  lists nor declined by the **undecided** door, which names its two causes: the relation never walked
+  it there (a member omitted from the scope, another tree), or its condition read a coordinate the
+  scope does not supply under the open world, which the evaluator refuses rather than calls FALSE
+  (declare the coordinate set to make that absence FALSE). `declined` decides only that choice, and
+  is never folded, counted or ordered;
+- an include element that is **neither a reference nor inline aspect content** is refused by name:
+  a guard written at an include position, or a named guard included by value, has no declaration,
+  so the relation can hold no instance of it; any other value there (a list, a number) is no aspect. A
   `{ host, ... }:` include is refused upstream by gen-aspects.
 
-**The caller's obligation.** `instances` must be minted over the same `values.aspects` and `cnf`
-`project` reads. An instance id names its declaration and formals, never its class content, so a
-relation minted over another tree delivers that tree's content at rc 0. Every `project` call carrying `instances`
+**The caller's obligation.** `instances` must be minted over the same `values.aspects` and `cnf`,
+the same members, and the same sources and descendants that `project`'s nodes stand for. `project`
+detects a member a scope omitted and an id the relation's tree never walked, both by the undecided
+door. It cannot detect a wrong source or descendant (it never sees sources), nor a relation over
+another tree that walks the same id: one that decides it FALSE delivers nothing, and one that lists
+an instance delivers that tree's content, both at rc 0. Every `project` call carrying `instances`
 forces the whole relation at its root, a `bindings` read included.
 
-`instances` refuses by name when it is not the four-field record `{ vertices; instantiates; reaches; nested; }` of attrsets, and where the walk reads it: an edge set or edge list of the wrong
+`instances` refuses by name when it is not the five-field record `{ vertices; instantiates; reaches; nested; declined = { reaches; nested; }; }` of attrsets (a four-field relation from an older gen-aspects is refused, never read as nothing declined), and where the walk reads it: an edge set, edge list or declined list of the wrong
 type, an id that is not a string, an id with no vertex, a vertex without an attrset `entry`, and an
 instance listed under an aspect its `instantiates` edge does not name.
 
