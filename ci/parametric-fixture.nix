@@ -4,9 +4,9 @@
 # because every file there is a test module.
 #
 # Every aspect carries `nixos.marks = [ "<its name>" ]`; the list merge reverses module order, so a
-# value reads last-delivered first. Guards of one condition carry distinct `description`s: a guard's
-# identity is its term, and two equal terms would be one instance (den-hoag-ehkse), which `collide`
-# below exercises on purpose.
+# value reads last-delivered first. Guards of one condition carry distinct `description`s, though a
+# placed guard is identified by its declared path and not by its term (den-hoag-ehkse): `collide`
+# below holds two equal terms at two paths.
 {
   genDelivery,
   aspects,
@@ -187,8 +187,8 @@ let
     });
   iidOf = n: a: builtins.head rel.reaches.${n}.${a};
 
-  # den-hoag-ehkse: two guards whose condition and non-class body are equal mint ONE instance, which
-  # `instancesFor` lists under both declarations. `distinct` is the control: distinct descriptions.
+  # den-hoag-ehkse: two guards whose condition and non-class body are equal are two declarations, so
+  # two instances, each delivering its own marks. `distinct` is the control: distinct descriptions.
   collideOf =
     described:
     let

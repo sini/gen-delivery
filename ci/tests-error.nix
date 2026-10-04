@@ -150,9 +150,6 @@ let
       };
     };
   edgeFrom = "gen-delivery: project: the instance relation's edge";
-  collideIid = builtins.head fx.collide.rel.reaches.n.y;
-  # The declaration the collapsed instance does not instantiate, and so the one whose reach refuses.
-  collideBad = if fx.collide.rel.instantiates.${collideIid} == [ "x" ] then "y" else "x";
 
   # ── THE DELIVERY-CLASS MAP'S REFUSALS ── nodes a, b, c carry T content (`web`); `withU` adds U
   # content (`extra`) at a. The expression deep-forces the realization, so a refusal on any spine
@@ -499,11 +496,6 @@ in
         };
       };
       expectedError.msg = exactly "${edgeFrom} from 'na' lists instance '${pAtNa}' under aspect 'p', and it does not instantiate 'p'";
-    };
-    # den-hoag-ehkse: the producer's collapsed instance meets the same door, by name, until it lands.
-    test-collapsed-instance-names-the-i-edge = {
-      expr = fx.collide.marks;
-      expectedError.msg = exactly "${edgeFrom} from 'n' lists instance '${collideIid}' under aspect '${collideBad}', and it does not instantiate '${collideBad}'";
     };
     # K2: each malformed view shape is refused by a named, catchable door where the walk reads it.
     test-edge-list-not-a-list-names-it = {
