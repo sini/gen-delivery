@@ -170,23 +170,27 @@ let
     "gen-delivery: project: aspect '${id}' includes at position ${at} a reference into origin "
     + "'${prelude.concatStringsSep "/" ref.origin}', which this tree does not hold; project delivers "
     + "only what it can reach, so federate the trees first";
-  # A guard at an include position (inline, or a named guard included by value) has no declaration
-  # id, so the producer can mint no instance of it (identity design G5).
+  # gen-aspects' `sealed` site: an include element that is neither a reference nor inline aspect
+  # content. A guard there (inline, or a named guard included by value) has no declaration id, so the
+  # producer can mint no instance of it (identity design G5); any other value there (a list, a
+  # number, as a fired term can give) is no aspect at all.
   sealedIncludeRefusal =
     id: at:
-    "gen-delivery: project: aspect '${id}' carries at include position ${at} parametric content (a "
-    + "guard) that is not a declared aspect, so the instance relation can hold no instance of it; "
-    + "declare it as a named aspect and include it by key";
-  # A reached parametric node is delivered through its instances (ADR-0010 section 4(a)). Where the
-  # relation was not handed the reaching scope, or the node is a carrier, an empty reach refuses.
-  # INTERIM (den-hoag-n8wb5): a first-order guard with no listed instance in a handed scope refuses as
-  # undecided, until the relation publishes whether the guard was declined.
+    "gen-delivery: project: aspect '${id}' carries at include position ${at} an element that is "
+    + "neither a reference to an aspect nor inline aspect content: a guard there is not a declared "
+    + "aspect, so the instance relation can hold no instance of it (declare it as a named aspect and "
+    + "include it by key), and any other value (a list, a number) is not an aspect";
+  # A reached parametric node is delivered through its instances (ADR-0010 section 4(a)), and is no
+  # edge where the relation DECLINED it (its condition resolved FALSE there). A first-order guard the
+  # relation neither lists nor declined in a handed scope is undecided there, and refuses.
   undecidedReachRefusal =
     node: id: inst:
     "gen-delivery: project: node '${node}' reaches parametric aspect '${id}'"
     + (if inst == null then "" else " inside instance '${inst}'")
-    + ", and the instance relation lists no instance of it there; the relation does not publish whether "
-    + "the guard was declined, so the reach is undecided and refuses (interim, until den-hoag-n8wb5)";
+    + ", and the instance relation neither lists an instance of it there nor declined it: either the "
+    + "relation never walked it there (it was minted over other members or another tree than project "
+    + "reads), or its condition read a coordinate the scope does not supply under the open world "
+    + "(declare the coordinate set to make that absence FALSE)";
   noInstanceRefusal =
     node: id: inst:
     "gen-delivery: project: node '${node}' reaches parametric aspect '${id}'"
@@ -211,7 +215,10 @@ let
   vertexNotRecordRefusal =
     iid:
     "gen-delivery: project: the instance relation's vertex '${iid}' is not an attrset carrying an attrset `entry`";
-  instancesShapeRefusal = "gen-delivery: project: instances must be gen-aspects' instance relation { vertices; instantiates; reaches; nested; }, each an attrset";
+  instancesShapeRefusal = "gen-delivery: project: instances must be gen-aspects' instance relation { vertices; instantiates; reaches; nested; declined = { reaches; nested; }; }, each an attrset";
+  declinedNotListRefusal =
+    scope: v:
+    "gen-delivery: project: the instance relation's declined aspects at '${scope}' must be a list of aspect ids, got ${builtins.typeOf v}";
   # Both sides are named "land in" because the identity side was not sent by any entry.
   deliveryCollisionRefusal =
     node: dc: authored:
@@ -258,21 +265,30 @@ let
   # is a well-formedness check that the producer's grouping agrees with the `I` edge; it is not a
   # member resolution. A static node is always walked at node scope, wherever it is reached.
   #
-  # THE EMPTY REACH REFUSES (INTERIM, den-hoag-n8wb5). A reach that lists no instance refuses by
-  # name, wherever it is. ADR-0019's "an includeIf that resolves off is indistinguishable from an edge
-  # that never existed" covers a reach whose falseness is DECIDED, and absence does not decide it: an
-  # empty pair in a handed scope is the producer declining the guard OR never walking it (a scope
-  # handed without that member, or over other sources or another tree), and the relation does not
-  # publish which. Delivering nothing there turns an honest caller's mis-handed relation into a TRUE
-  # guard silently dropped. The deliver-nothing arm is banked for the owner; den-hoag-n8wb5 carries
-  # the flip, once gen-aspects publishes the declined set: deliver nothing iff the id is declared
-  # declined. A scope with no entry, and a guard carrier (it admits every tuple), refuse by the
-  # no-instance door; an empty pair in a handed scope refuses as undecided. `project` evaluates no
-  # condition.
+  # THE EMPTY REACH, THREE ARMS (den-hoag-n8wb5). The relation publishes beside its edges the walked
+  # guards whose condition was decided FALSE (`declined.reaches.<node>`, `declined.nested.<iid>`). A
+  # reach that lists no instance, in a scope whose edge entry is present:
+  #   1. the id is declined there: NO ITEMS. ADR-0019: an includeIf that resolves off is
+  #      indistinguishable from an edge that never existed;
+  #   2. otherwise, a first-order guard (it has a `condition`): the undecided door. The relation
+  #      neither decided it TRUE nor FALSE there: it never walked it (a scope handed without that
+  #      member, or a relation over another tree), or the evaluator refused its condition (R: `has`
+  #      over a coordinate the scope lacks under the open world, quf7g OQ1);
+  #   3. otherwise, and wherever the scope's entry is absent (no `instances`, a node missing from
+  #      `reaches`, an instance missing from `nested`) or the id is a guard carrier (it admits every
+  #      tuple): the no-instance door.
+  # `declined` selects between "no items" and "refuse" and nothing else: it is never folded, counted
+  # or ordered, so `project`'s output stays a function of the reached declarations. `project`
+  # evaluates no condition.
   #
-  # THE CALLER'S OBLIGATION. The relation must be minted over the same `values.aspects` and `cnf`
-  # `project` reads. An instance id names its declaration and formals, never class content, so a
-  # relation minted over another tree delivers that tree's content undetected.
+  # THE CALLER'S OBLIGATION. The relation must be minted over the same `values.aspects` and `cnf`,
+  # the same members, and the same sources and descendants that `project`'s nodes stand for. `project`
+  # detects a member the scope omitted and an id the relation's tree never walked (both arm 2). It
+  # cannot detect (i) a wrong source or descendant, since it never sees sources: a FALSE there is
+  # genuine for what was handed; (ii) a relation over another tree that walks the same id and decides
+  # it FALSE; (iii) for a TRUE reach, a relation over another tree, which delivers that tree's content.
+  # An instance id names its declaration and formals, never class content. Under a declared
+  # coordinate set, (i) and (ii) deliver nothing at rc 0.
   #
   # A node's walk key is its id. An inline site's is `[ hostId ] ++ positionPath`, an ADDRESS into
   # the host's published declaration and never a name for the content: it is generated exactly once
@@ -305,8 +321,9 @@ let
         inst = null;
       };
       # The instances listed at `(scope, id)`, each checked against the vertex it names and its `I`
-      # edge. A first-order guard (gen-aspects' `termGuard`: it has a `condition`) with none listed in
-      # a handed scope is undecided and refuses (interim, den-hoag-n8wb5).
+      # edge. An empty reach takes THE EMPTY REACH's three arms: declined (in a present edge entry)
+      # delivers nothing, a first-order guard (gen-aspects' `termGuard`: it has a `condition`) in a
+      # present entry refuses as undecided, and anything else by the no-instance door.
       instancesAt =
         nodeName: inst: id:
         let
@@ -314,13 +331,22 @@ let
           edges =
             if inst == null then instances.reaches.${nodeName} or null else instances.nested.${inst} or null;
           ids = if edges == null then null else edges.${id} or null;
+          declined =
+            if inst == null then
+              instances.declined.reaches.${nodeName} or [ ]
+            else
+              instances.declined.nested.${inst} or [ ];
         in
         if edges != null && !builtins.isAttrs edges then
           throw (edgesNotAttrsRefusal scope edges)
         else if ids != null && !builtins.isList ids then
           throw (edgeListNotListRefusal scope id ids)
         else if ids == null || ids == [ ] then
-          if edges != null && facts.nodeData.${id} ? condition then
+          if !builtins.isList declined then
+            throw (declinedNotListRefusal scope declined)
+          else if edges != null && builtins.elem id declined then
+            [ ]
+          else if edges != null && facts.nodeData.${id} ? condition then
             throw (undecidedReachRefusal nodeName id inst)
           else
             throw (noInstanceRefusal nodeName id inst)
@@ -536,18 +562,29 @@ let
               instantiates = { };
               reaches = { };
               nested = { };
+              declined = {
+                reaches = { };
+                nested = { };
+              };
             };
         in
         if
           builtins.isAttrs v
           &&
             builtins.attrNames v == [
+              "declined"
               "instantiates"
               "nested"
               "reaches"
               "vertices"
             ]
           && builtins.all builtins.isAttrs (builtins.attrValues v)
+          &&
+            builtins.attrNames v.declined == [
+              "nested"
+              "reaches"
+            ]
+          && builtins.all builtins.isAttrs (builtins.attrValues v.declined)
         then
           v
         else

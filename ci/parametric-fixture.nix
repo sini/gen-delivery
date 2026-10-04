@@ -20,11 +20,12 @@ let
   marked = n: { nixos.marks = [ n ]; };
   hostGuard = n: guard (pred.has "host") (marked n // { description = n; });
 
-  valuesOf =
-    mods:
+  valuesOf = valuesWith cnf;
+  valuesWith =
+    c: mods:
     (genMerge.evalModuleTree {
       modules = [
-        ((aspects.mkAspectSchema cnf).mkAspectModule { })
+        ((aspects.mkAspectSchema c).mkAspectModule { })
         {
           options.hosts = genMerge.mkOption {
             type = t.attrsOf t.raw;
@@ -35,7 +36,8 @@ let
       ++ mods;
     }).config;
 
-  values = valuesOf [
+  values = valuesOf mods;
+  mods = [
     {
       aspects = {
         web = marked "web" // {
@@ -73,8 +75,8 @@ let
             }
           ];
         };
-        # The empty reach in a handed scope (K1, interim refusal): `hm` reached directly, and nested
-        # inside `eu`.
+        # The empty reach in a handed scope (den-hoag-n8wb5): `hm` reached directly, and nested inside
+        # `eu`; declined under the closed world, refused (R) under the open world.
         hm = guard (pred.has "user") (marked "hm" // { description = "hm"; });
         home = marked "home" // {
           includes = [ "hm" ];
@@ -118,53 +120,96 @@ let
   relationOf =
     values: suppliers: scopes:
     aspects.instancesFor cnf values.aspects { inherit suppliers scopes; };
-  rel =
-    relationOf values
-      {
-        ${src "na"}.host = "ha";
-        ${src "nb"}.host = "hb";
-        ${src "nei"}.host = "ha";
-        ${src "nh"}.host = "ha";
-        ${src "u1"}.user = "uA";
-        ${src "u2"}.user = "uB";
-      }
-      {
-        na = host "na" // {
-          members = values.hosts.na.aspects;
-        };
-        nb = host "nb" // {
-          members = values.hosts.nb.aspects;
-        };
-        nf = {
-          members = [ "fan" ];
-          sources = { };
-          descendants = [
-            { sources.user = src "u1"; }
-            { sources.user = src "u2"; }
-          ];
-        };
-        nei = host "nei" // {
-          members = [ "ei" ];
-        };
-        # `nmiss` is handed no scope: its relation entry is absent.
-        nh = host "nh" // {
-          members = [ "home" ];
-        };
-        nhu = host "nh" // {
-          members = [ "home" ];
-          descendants = [ { sources.user = src "u1"; } ];
-        };
-        nhe = host "nh" // {
-          members = [ "eu" ];
-        };
-        nomit = host "nh" // {
-          members = [ ];
-        };
-        nhanded = host "nh" // {
-          members = [ "p" ];
-        };
+  rel = relationOf values relInput.suppliers relInput.scopes;
+  relInput = {
+    suppliers = {
+      ${src "na"}.host = "ha";
+      ${src "nb"}.host = "hb";
+      ${src "nei"}.host = "ha";
+      ${src "nh"}.host = "ha";
+      ${src "u1"}.user = "uA";
+      ${src "u2"}.user = "uB";
+    };
+    scopes = {
+      na = host "na" // {
+        members = values.hosts.na.aspects;
       };
+      nb = host "nb" // {
+        members = values.hosts.nb.aspects;
+      };
+      nf = {
+        members = [ "fan" ];
+        sources = { };
+        descendants = [
+          { sources.user = src "u1"; }
+          { sources.user = src "u2"; }
+        ];
+      };
+      nei = host "nei" // {
+        members = [ "ei" ];
+      };
+      # `nmiss` is handed no scope: its relation entry is absent.
+      nh = host "nh" // {
+        members = [ "home" ];
+      };
+      nhu = host "nh" // {
+        members = [ "home" ];
+        descendants = [ { sources.user = src "u1"; } ];
+      };
+      nhe = host "nh" // {
+        members = [ "eu" ];
+      };
+      nomit = host "nh" // {
+        members = [ ];
+      };
+      nhanded = host "nh" // {
+        members = [ "p" ];
+      };
+    };
+  };
 
+  # The same tree and scopes under the CLOSED world (a declared coordinate set): an absent `user`
+  # resolves FALSE, so the relation declines the guard (den-hoag-n8wb5). Under the open world above
+  # the evaluator refuses it (R), so it is in neither set.
+  cnfCw = cnf // {
+    entityKinds = {
+      host = true;
+      user = true;
+    };
+  };
+  # A guard is checked and fired under ONE declared set, so the closed world places its own tree.
+  valuesCw = valuesWith cnfCw mods;
+  relCw = aspects.instancesFor cnfCw valuesCw.aspects { inherit (relInput) suppliers scopes; };
+  # ADR-0019's equivalence: the same closed-world tree with `home`'s include of `hm` removed, so `nh`
+  # projects there what an include that never existed delivers.
+  valuesCwNoHm = valuesWith cnfCw (
+    map (
+      m:
+      if m ? aspects.home then
+        m
+        // {
+          aspects = m.aspects // {
+            home = marked "home";
+          };
+        }
+      else
+        m
+    ) mods
+  );
+  withoutHmCw = projectOf valuesCwNoHm {
+    cnf = cnfCw;
+    instances = aspects.instancesFor cnfCw valuesCwNoHm.aspects {
+      inherit (relInput) suppliers scopes;
+    };
+  };
+  withViewCw =
+    view:
+    marksOf (
+      projectOf valuesCw {
+        cnf = cnfCw;
+        instances = view;
+      }
+    );
   projectOf =
     values: extra:
     genDelivery.project (
@@ -225,6 +270,12 @@ in
     iidOf
     ;
   withRel = projectWith { instances = rel; };
+  inherit relCw withViewCw withoutHmCw;
+  mCw = withViewCw relCw;
+  withRelCw = projectOf valuesCw {
+    cnf = cnfCw;
+    instances = relCw;
+  };
   noRel = projectWith { };
   mW = withView rel;
   collide = collideOf (_: { });
