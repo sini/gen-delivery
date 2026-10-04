@@ -17,11 +17,11 @@ INPUT channel and cannot carry a value out, so the lock-parameterised `follows` 
 the same record. Overriding `wire` is how a cell reads the shim's own formal-to-path map AND its own
 resolver without a fetch, a restated path or a transcribed fold.
 
-|                     | signature                                                                                                                                                                                                           |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `project`           | `{ values, cnf ? null, selectNodes ? null, deliveryClasses ? {} } -> { aspects, nodes }`; `deliveryClasses` is `{ <node> = { <authored class> = <delivery class>; }; }`                                             |
-| `realize`           | `{ projected, terminals, bindings ? {}, refinements ? {}, layerOrder ? defaultLayerOrder, extraModules ? {} } -> { <class>.<node> = artifact; }`; `extraModules` is class-major, `{ <class>.<node> = [ module ]; }` |
-| `defaultLayerOrder` | `[ "projection" "global" "refinement" ]`                                                                                                                                                                            |
+|                     | signature                                                                                                                                                                                                                                    |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `project`           | `{ values, cnf ? null, selectNodes ? null, deliveryClasses ? {}, instances ? {} } -> { aspects, nodes }`; `deliveryClasses` is `{ <node> = { <authored class> = <delivery class>; }; }`; `instances` is gen-aspects' `instancesFor` relation |
+| `realize`           | `{ projected, terminals, bindings ? {}, refinements ? {}, layerOrder ? defaultLayerOrder, extraModules ? {} } -> { <class>.<node> = artifact; }`; `extraModules` is class-major, `{ <class>.<node> = [ module ]; }`                          |
+| `defaultLayerOrder` | `[ "projection" "global" "refinement" ]`                                                                                                                                                                                                     |
 
 `project.aspects` is the flat registry (`aspects.flatten values.aspects`, empty when there is no
 `aspects` surface). `project.nodes` is the per-node build projection,

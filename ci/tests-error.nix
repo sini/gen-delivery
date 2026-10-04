@@ -31,6 +31,14 @@
 }:
 let
   exactly = msg: "^" + lib.escapeRegex msg + "$";
+  fx = import ./parametric-fixture.nix {
+    inherit
+      genDelivery
+      aspects
+      genMerge
+      term
+      ;
+  };
 
   # Held as one binding because the text is long enough that inlining it beside the `exactly` call
   # invites a `+` that binds looser than the application and silently anchors only its first term.
@@ -105,6 +113,7 @@ let
     + "closure arrived here unlowered, and no first-order route reaches it there. A closure that reads none "
     + "of the module function's arguments can be written beside the function instead of inside it.";
 
+  instancesShape = "gen-delivery: project: instances must be gen-aspects' instance relation { vertices; instantiates; reaches; nested; }, each an attrset";
   memberUnknown = "gen-delivery: project: node 'server' names aspect 'ghost' as a member, and no aspect has that key";
   memberNotIdentifier =
     "gen-delivery: project: node 'server' lists a member that is not an aspect identifier (a set); "
@@ -115,13 +124,29 @@ let
   sealedInclude =
     position:
     "gen-delivery: project: aspect 'a' carries at include position ${position} parametric content (a "
-    + "guard), which delivery cannot evaluate before "
-    + "parametric aspects are specified (ADR-0010 section 4)";
-  guardLeaf =
-    "gen-delivery: project: aspect 'p' is parametric (a guard, including an "
-    + "aspect with a guard definition beside others), so none of its parts can be delivered before "
-    + "parametric aspects are specified (ADR-0010 section 4); this refusal is interim and replaces a "
-    + "silent drop";
+    + "guard) that is not a declared aspect, so the instance relation can hold no instance of it; "
+    + "declare it as a named aspect and include it by key";
+  noInstance =
+    node: a: inst:
+    "gen-delivery: project: node '${node}' reaches parametric aspect '${a}'"
+    + (if inst == null then "" else " inside instance '${inst}'")
+    + ", and the instance relation holds no instance of it there; project reads instances, it never mints them";
+  # The parametric fixture's views, each planted with one fault on `na`'s edge to `p`.
+  pAtNa = fx.iidOf "na" "p";
+  plant = view: fx.withView (fx.rel // view) "na";
+  plantEdge =
+    e:
+    plant {
+      reaches = fx.rel.reaches // {
+        na = fx.rel.reaches.na // {
+          p = e;
+        };
+      };
+    };
+  edgeFrom = "gen-delivery: project: the instance relation's edge";
+  collideIid = builtins.head fx.collide.rel.reaches.n.y;
+  # The declaration the collapsed instance does not instantiate, and so the one whose reach refuses.
+  collideBad = if fx.collide.rel.instantiates.${collideIid} == [ "x" ] then "y" else "x";
 
   # ── THE DELIVERY-CLASS MAP'S REFUSALS ── nodes a, b, c carry T content (`web`); `withU` adds U
   # content (`extra`) at a. The expression deep-forces the realization, so a refusal on any spine
@@ -393,7 +418,7 @@ in
           ];
       expectedError.msg = exactly (upstreamClosureRefusal "p");
     };
-    test-parametric-guard-node-names-it-and-the-interim = {
+    test-parametric-guard-node-names-the-node-scope-door = {
       expr =
         closureClasses
           [ "p" ]
@@ -401,12 +426,12 @@ in
             { aspects.p.nixos.marks = [ "attr" ]; }
             { aspects.p = hostGuard; }
           ];
-      expectedError.msg = exactly guardLeaf;
+      expectedError.msg = exactly (noInstance "server" "p" null);
     };
     # den-hoag-bgeum (gate C2): gen-aspects publishes a parametric declaration's members, `deferred`
-    # where an element reads the context. The closure stops at a guard leaf and never reads them: they
-    # exist only where its condition holds. So the reached guard node reads the interim refusal, never
-    # a sealed-content refusal naming a guard its include position does not hold.
+    # where an element reads the context. The closure never walks a guard leaf's members: they exist
+    # only where its condition holds. So the reached guard node, handed no instances, reads the
+    # no-instance door, never a sealed-content refusal naming a guard its include position does not hold.
     test-parametric-guard-node-with-deferred-member-names-it = {
       expr =
         closureClasses
@@ -416,7 +441,84 @@ in
               aspects.p = aspects.guard (aspects.pred.has "host") { includes = [ (term.readCtx "host" [ ]) ]; };
             }
           ];
-      expectedError.msg = exactly guardLeaf;
+      expectedError.msg = exactly (noInstance "server" "p" null);
+    };
+
+    # ── THE INSTANCE RELATION'S DOORS (den-hoag-wpn8c) ──
+    # W3: a node the relation was handed no scope for reaches `p`; undecided, so it refuses.
+    test-unhanded-node-reaching-a-parametric-node-names-the-node-scope-door = {
+      expr = fx.mW "nmiss";
+      expectedError.msg = exactly (noInstance "nmiss" "p" null);
+    };
+    # K1's boundary: a carrier (`s`, split) admits every tuple, so no listed instance in a handed
+    # scope is never a FALSE condition; it refuses.
+    test-carrier-without-an-instance-in-a-handed-scope-names-the-node-scope-door = {
+      expr = plant {
+        reaches = fx.rel.reaches // {
+          na = removeAttrs fx.rel.reaches.na [ "s" ];
+        };
+      };
+      expectedError.msg = exactly (noInstance "na" "s" null);
+    };
+    # W4 (htfv3 I9): `e@nb`'s nested entry is absent, so its `q` is undecided there.
+    test-instance-without-a-nested-entry-names-the-instance-scope-door = {
+      expr = fx.withView (fx.rel // { nested = { }; }) "nb";
+      expectedError.msg = exactly (noInstance "nb" "q" (fx.iidOf "nb" "e"));
+    };
+    # W8a: the edge names an instance the relation holds no vertex for.
+    test-edge-to-a-missing-vertex-names-it = {
+      expr = plant { vertices = removeAttrs fx.rel.vertices [ pAtNa ]; };
+      expectedError.msg = exactly "${edgeFrom} from 'na' names instance '${pAtNa}', which it holds no vertex for";
+    };
+    # W8b: the vertex listed under `p` instantiates another declaration.
+    test-edge-to-another-declarations-instance-names-the-i-edge = {
+      expr = plant {
+        instantiates = fx.rel.instantiates // {
+          ${pAtNa} = [ "q" ];
+        };
+      };
+      expectedError.msg = exactly "${edgeFrom} from 'na' lists instance '${pAtNa}' under aspect 'p', and it does not instantiate 'p'";
+    };
+    # den-hoag-ehkse: the producer's collapsed instance meets the same door, by name, until it lands.
+    test-collapsed-instance-names-the-i-edge = {
+      expr = fx.collide.marks;
+      expectedError.msg = exactly "${edgeFrom} from 'n' lists instance '${collideIid}' under aspect '${collideBad}', and it does not instantiate '${collideBad}'";
+    };
+    # K2: each malformed view shape is refused by a named, catchable door where the walk reads it.
+    test-edge-list-not-a-list-names-it = {
+      expr = plantEdge "oops";
+      expectedError.msg = exactly "${edgeFrom}s from 'na' under aspect 'p' must be a list of instance ids, got string";
+    };
+    test-edge-id-not-a-string-names-it = {
+      expr = plantEdge [ 5 ];
+      expectedError.msg = exactly "${edgeFrom} from 'na' under aspect 'p' names an instance with a value of type int, not an instance id (a string)";
+    };
+    test-vertex-entry-not-an-attrset-names-it = {
+      expr = plant {
+        vertices = fx.rel.vertices // {
+          ${pAtNa} = fx.rel.vertices.${pAtNa} // {
+            entry = 5;
+          };
+        };
+      };
+      expectedError.msg = exactly "gen-delivery: project: the instance relation's vertex '${pAtNa}' is not an attrset carrying an attrset `entry`";
+    };
+    test-scope-edges-not-an-attrset-names-it = {
+      expr = plant {
+        reaches = fx.rel.reaches // {
+          na = 5;
+        };
+      };
+      expectedError.msg = exactly "${edgeFrom}s from 'na' must be an attrset { <aspect> = [ <instance id> ]; }, got int";
+    };
+    # W12 (and D4): the relation is the producer's whole record; a non-record and a partial one refuse.
+    test-instances-not-a-relation-names-it = {
+      expr = fx.projectWith { instances = 5; };
+      expectedError.msg = exactly instancesShape;
+    };
+    test-instances-partial-relation-names-it = {
+      expr = fx.projectWith { instances.vertices = { }; };
+      expectedError.msg = exactly instancesShape;
     };
 
     # ── THE DELIVERY-CLASS MAP: each door names its subject ──
@@ -521,7 +623,7 @@ in
         values = { };
         notAnOption = 1;
       };
-      expectedError.msg = exactly "gen-delivery.project: 'notAnOption' is not an option of this door; the options are closed (accepted: 'values', 'cnf', 'selectNodes', 'deliveryClasses') (in prelude.checkOptions)";
+      expectedError.msg = exactly "gen-delivery.project: 'notAnOption' is not an option of this door; the options are closed (accepted: 'values', 'cnf', 'selectNodes', 'deliveryClasses', 'instances') (in prelude.checkOptions)";
     };
     test-project-non-set-names-the-door = {
       expr = genDelivery.project 1;

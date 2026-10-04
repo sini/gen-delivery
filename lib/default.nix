@@ -170,21 +170,40 @@ let
     "gen-delivery: project: aspect '${id}' includes at position ${at} a reference into origin "
     + "'${prelude.concatStringsSep "/" ref.origin}', which this tree does not hold; project delivers "
     + "only what it can reach, so federate the trees first";
+  # A guard at an include position (inline, or a named guard included by value) has no declaration
+  # id, so the producer can mint no instance of it (identity design G5).
   sealedIncludeRefusal =
     id: at:
     "gen-delivery: project: aspect '${id}' carries at include position ${at} parametric content (a "
-    + "guard), which delivery cannot evaluate before "
-    + "parametric aspects are specified (ADR-0010 section 4)";
-  # INTERIM (the OQ4 ruling's arm b): a node that IS parametric, either a guard as its only
-  # definition or as one of several (which folds the whole aspect, its static parts included, into
-  # a guard carrier), is refused by name until parametric content can be delivered. A context closure
-  # never reaches here: gen-aspects refuses it upstream, naming the gen-rules door.
-  guardLeafRefusal =
-    id:
-    "gen-delivery: project: aspect '${id}' is parametric (a guard, including an "
-    + "aspect with a guard definition beside others), so none of its parts can be delivered before "
-    + "parametric aspects are specified (ADR-0010 section 4); this refusal is interim and replaces a "
-    + "silent drop";
+    + "guard) that is not a declared aspect, so the instance relation can hold no instance of it; "
+    + "declare it as a named aspect and include it by key";
+  # A reached parametric node is delivered through its instances (ADR-0010 section 4(a)). Where the
+  # relation was not handed the reaching scope, or the node is a carrier, an empty reach refuses.
+  noInstanceRefusal =
+    node: id: inst:
+    "gen-delivery: project: node '${node}' reaches parametric aspect '${id}'"
+    + (if inst == null then "" else " inside instance '${inst}'")
+    + ", and the instance relation holds no instance of it there; project reads instances, it never mints them";
+  edgeVertexRefusal =
+    scope: iid:
+    "gen-delivery: project: the instance relation's edge from '${scope}' names instance '${iid}', which it holds no vertex for";
+  edgeAspectRefusal =
+    scope: a: iid:
+    "gen-delivery: project: the instance relation's edge from '${scope}' lists instance '${iid}' under aspect '${a}', and it does not instantiate '${a}'";
+  # The view's malformed shapes, each read where the walk reads it (htfv3 §2.3's view doors).
+  edgesNotAttrsRefusal =
+    scope: v:
+    "gen-delivery: project: the instance relation's edges from '${scope}' must be an attrset { <aspect> = [ <instance id> ]; }, got ${builtins.typeOf v}";
+  edgeListNotListRefusal =
+    scope: a: v:
+    "gen-delivery: project: the instance relation's edges from '${scope}' under aspect '${a}' must be a list of instance ids, got ${builtins.typeOf v}";
+  edgeIdNotStringRefusal =
+    scope: a: v:
+    "gen-delivery: project: the instance relation's edge from '${scope}' under aspect '${a}' names an instance with a value of type ${builtins.typeOf v}, not an instance id (a string)";
+  vertexNotRecordRefusal =
+    iid:
+    "gen-delivery: project: the instance relation's vertex '${iid}' is not an attrset carrying an attrset `entry`";
+  instancesShapeRefusal = "gen-delivery: project: instances must be gen-aspects' instance relation { vertices; instantiates; reaches; nested; }, each an attrset";
   # Both sides are named "land in" because the identity side was not sent by any entry.
   deliveryCollisionRefusal =
     node: dc: authored:
@@ -219,7 +238,31 @@ let
   #            `aspectType` coerces a split definition into), delivered AT ITS POSITION, and its own
   #            sites followed the same way;
   #   foreign  refused by name: a reference into a tree this one does not hold;
-  #   sealed   refused by name: parametric content.
+  #   sealed   refused by name: parametric content with no declaration id.
+  #
+  # ── A PARAMETRIC NODE IS DELIVERED THROUGH ITS INSTANCES (ADR-0010 §4(a); van Antwerpen 2018 §2.5) ──
+  # A guard leaf is never a walk item: its declaration's members exist only where its condition
+  # holds, so a static walk through it would deliver them unconditionally. Where it is reached it is
+  # replaced by the instances the caller's materialised relation (`instances`, gen-aspects'
+  # `instancesFor`) lists at the reaching scope: `reaches.<node>.<id>` for the projected node,
+  # `nested.<iid>.<id>` inside an instance. An instance item delivers the vertex's `entry` (σ applied
+  # per field by the producer) and follows that entry's own `includes`. `instantiates.<iid> == [ id ]`
+  # is a well-formedness check that the producer's grouping agrees with the `I` edge; it is not a
+  # member resolution. A static node is always walked at node scope, wherever it is reached.
+  #
+  # THE EMPTY REACH, and where the boundary falls. The producer walks every scope it is handed and
+  # mints wherever the guard admits a tuple, so its relation holds an entry for every handed scope
+  # (`reaches.<node>`, `nested.<iid>`). Inside such an entry, a FIRST-ORDER guard listing no instance
+  # is one whose condition is FALSE at every tuple: no edge, delivering nothing (ADR-0019, "an
+  # includeIf that resolves off is indistinguishable from an edge that never existed"). A scope the
+  # relation holds no entry for was never handed, and a carrier admits every tuple, so for either an
+  # empty reach is undecided and refuses by name. `project` evaluates no condition: it reads which
+  # scopes the producer decided.
+  #
+  # THE CALLER'S OBLIGATION. The relation must be minted over the same `values.aspects`, `cnf` and
+  # node members `project` reads. An instance id names its declaration and formals, never class
+  # content, so a relation minted over another tree delivers that tree's content undetected, and a
+  # scope handed fewer members reads their parametric reach as FALSE.
   #
   # A node's walk key is its id. An inline site's is `[ hostId ] ++ positionPath`, an ADDRESS into
   # the host's published declaration and never a name for the content: it is generated exactly once
@@ -228,11 +271,12 @@ let
   # (`resolve`), read here and never re-run. A member is an identifier, resolved through the
   # facts' key→id relation (`nodeIdOf`), never by re-rendering the id.
   projectNodes =
-    cnf: deliveryClasses: nodes: values:
+    cnf: deliveryClasses: instances: nodes: values:
     let
       # One facts record per `project` call: each node's sites are a thunk in it, resolved at most
       # once however many nodes reach that node.
       facts = aspects.graphFacts cnf (values.aspects or { });
+      sitesOfEntry = aspects.includeSitesOfEntry cnf (values.aspects or { });
       at = pos: prelude.concatStringsSep "." (map toString pos);
 
       memberId =
@@ -242,33 +286,80 @@ let
         else
           facts.nodeIdOf.${k} or (throw (memberUnknownRefusal node k));
 
+      # `inst` is the reaching scope: null for the projected node, else the enclosing instance id. An
+      # instance item's key is `[ <iid> ]`, a key space distinct from facts ids (`aspect-instance:`).
       nodeItem = id: {
         key = [ id ];
         inherit id;
         pos = [ ];
+        inst = null;
       };
-      # A guard leaf is a closure LEAF, as in gen-aspects' own static closure (`instancesFor`'s
-      # `paramsFrom`): its published members (`includeSitesOf`, `deferred` where context-dependent)
-      # exist only where its condition holds, so a static closure entering them would deliver
-      # conditional members unconditionally. The leaf itself refuses in `contentOf` (interim).
-      succ =
-        item:
-        if item.pos == [ ] && aspects.isGuardLeaf facts.nodeData.${item.id} then
-          [ ]
+      # The instances listed at `(scope, id)`, each checked against the vertex it names and its `I`
+      # edge. A first-order guard (gen-aspects' `termGuard`: it has a `condition`) with none listed in
+      # a handed scope is FALSE there and yields no item.
+      instancesAt =
+        nodeName: inst: id:
+        let
+          scope = if inst == null then nodeName else inst;
+          edges =
+            if inst == null then instances.reaches.${nodeName} or null else instances.nested.${inst} or null;
+          ids = if edges == null then null else edges.${id} or null;
+        in
+        if edges != null && !builtins.isAttrs edges then
+          throw (edgesNotAttrsRefusal scope edges)
+        else if ids != null && !builtins.isList ids then
+          throw (edgeListNotListRefusal scope id ids)
+        else if ids == null || ids == [ ] then
+          if edges != null && facts.nodeData.${id} ? condition then
+            [ ]
+          else
+            throw (noInstanceRefusal nodeName id inst)
         else
-          builtins.concatLists (
-            prelude.imap0 (
+          map (
+            iid:
+            let
+              v = instances.vertices.${iid};
+            in
+            if !builtins.isString iid then
+              throw (edgeIdNotStringRefusal scope id iid)
+            else if !(instances.vertices ? ${iid}) then
+              throw (edgeVertexRefusal scope iid)
+            else if !(builtins.isAttrs v && builtins.isAttrs (v.entry or null)) then
+              throw (vertexNotRecordRefusal iid)
+            else if (instances.instantiates.${iid} or null) != [ id ] then
+              throw (edgeAspectRefusal scope id iid)
+            else
+              {
+                key = [ iid ];
+                id = iid;
+                pos = [ ];
+                inst = iid;
+              }
+          ) ids;
+      # Every reach of a node routes here: a static node is an item at node scope, a parametric one
+      # is its instances at the reaching scope, or nothing, or a refusal.
+      reach =
+        nodeName: inst: id:
+        if aspects.isGuardLeaf facts.nodeData.${id} then
+          instancesAt nodeName inst id
+        else
+          [ (nodeItem id) ];
+      succ =
+        nodeName: item:
+        builtins.concatLists (
+          prelude.imap0
+            (
               i: site:
               let
                 pos = item.pos ++ [ i ];
               in
               if site.kind == "local" then
-                [ (nodeItem site.target) ]
+                reach nodeName item.inst site.target
               else if site.kind == "content" then
                 [
                   {
                     key = [ item.id ] ++ pos;
-                    inherit (item) id;
+                    inherit (item) id inst;
                     inherit pos;
                     inherit (site) sites;
                   }
@@ -277,29 +368,31 @@ let
                 throw (foreignIncludeRefusal item.id (at pos) site.ref)
               else
                 throw (sealedIncludeRefusal item.id (at pos))
-            ) (if item.pos == [ ] then facts.includeSitesOf.${item.id} else item.sites)
-          );
-      # The entry an item delivers: a node's value, or the element at the site's position inside the
-      # host's `includes`, descending through each level's `includes`.
+            )
+            (
+              if item.pos != [ ] then
+                item.sites
+              else if item.inst != null then
+                sitesOfEntry instances.vertices.${item.inst}.entry
+              else
+                facts.includeSitesOf.${item.id}
+            )
+        );
+      # The entry an item delivers: a node's value or an instance's entry, or the element at the
+      # site's position inside its host's `includes`, descending through each level's `includes`.
       contentOf =
         item:
-        let
-          entry = facts.nodeData.${item.id};
-        in
-        if item.pos != [ ] then
-          builtins.foldl' (e: i: builtins.elemAt e.includes i) entry item.pos
-        else if aspects.isGuardLeaf entry then
-          throw (guardLeafRefusal item.id)
-        else
-          entry;
+        builtins.foldl' (e: i: builtins.elemAt e.includes i) (
+          if item.inst != null then instances.vertices.${item.inst}.entry else facts.nodeData.${item.id}
+        ) item.pos;
     in
     builtins.mapAttrs (
       nodeName: inst:
       let
         reached = map contentOf (
           builtins.genericClosure {
-            startSet = map (k: nodeItem (memberId nodeName k)) (inst.aspects or [ ]);
-            operator = succ;
+            startSet = builtins.concatMap (k: reach nodeName null (memberId nodeName k)) (inst.aspects or [ ]);
+            operator = succ nodeName;
           }
         );
         authored = dedup (builtins.concatMap (deliveryClassesOf cnf) reached);
@@ -331,8 +424,8 @@ let
   # `project` — the flat aspect registry plus the per-node build projection. Both keys were
   # published by the dissolving library's compose result; they are this surface's own now.
   #
-  # MIXED door: `values` required; `cnf`, `selectNodes` and `deliveryClasses` optional; the set
-  # closed.
+  # MIXED door: `values` required; `cnf`, `selectNodes`, `deliveryClasses` and `instances` optional;
+  # the set closed.
   project =
     args:
     let
@@ -341,6 +434,7 @@ let
         "cnf"
         "selectNodes"
         "deliveryClasses"
+        "instances"
       ] (prelude.checkRequired "gen-delivery.project" [ "values" ] args);
       # The resolved config VALUES of the caller's own evaluation.
       values = checked.values;
@@ -417,20 +511,53 @@ let
                   acc'
               ) acc (builtins.attrNames e)
           ) null (builtins.attrNames deliveryClasses);
+      # gen-aspects' instance relation (`instancesFor`), the materialised view the include closure
+      # reads a reached parametric node through. An absent field is the empty relation, so a caller
+      # passing none meets the no-instance door at every parametric reach. Forced at the root, beside
+      # the map: the record is the producer's whole output, so a partial one is refused rather than
+      # read as empty. COST: the four fields are forced to WHNF, and gen-aspects forces every pass on
+      # any field read, so every `project` call carrying `instances` pays the whole relation, a
+      # `bindings` read included.
+      instances =
+        let
+          v =
+            checked.instances or {
+              vertices = { };
+              instantiates = { };
+              reaches = { };
+              nested = { };
+            };
+        in
+        if
+          builtins.isAttrs v
+          &&
+            builtins.attrNames v == [
+              "instantiates"
+              "nested"
+              "reaches"
+              "vertices"
+            ]
+          && builtins.all builtins.isAttrs (builtins.attrValues v)
+        then
+          v
+        else
+          throw instancesShapeRefusal;
       registry = if values ? aspects then aspects.flatten values.aspects else { };
     in
     builtins.seq checked (
       builtins.seq declaration (
-        builtins.seq _deliveryClassesCheck {
-          # The FLAT aspect registry (keyed by aspect path): each entry carries its per-class
-          # deferredModule fields. The deferredModules are inspectable but unforced, so class bodies
-          # cross into a target's evaluation unevaluated. Absent an `aspects` surface, this is empty.
-          aspects = registry;
+        builtins.seq _deliveryClassesCheck (
+          builtins.seq instances {
+            # The FLAT aspect registry (keyed by aspect path): each entry carries its per-class
+            # deferredModule fields. The deferredModules are inspectable but unforced, so class bodies
+            # cross into a target's evaluation unevaluated. Absent an `aspects` surface, this is empty.
+            aspects = registry;
 
-          # The per-node build projection — a node-keyed reshape of the flat registry, driven by each
-          # node's `aspects` membership. This is what the terminal builds from.
-          nodes = projectNodes declaration deliveryClasses nodes values;
-        }
+            # The per-node build projection — a node-keyed reshape of the flat registry, driven by each
+            # node's `aspects` membership. This is what the terminal builds from.
+            nodes = projectNodes declaration deliveryClasses instances nodes values;
+          }
+        )
       )
     );
 

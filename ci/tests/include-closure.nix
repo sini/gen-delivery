@@ -13,9 +13,18 @@
   genDelivery,
   aspects,
   genMerge,
+  term,
   ...
 }:
 let
+  fx = import ../parametric-fixture.nix {
+    inherit
+      genDelivery
+      aspects
+      genMerge
+      term
+      ;
+  };
   t = genMerge.types;
   cnf.keySemantics.nixos.category = "class";
 
@@ -483,44 +492,130 @@ in
       };
     };
 
-    # ── G9j / G9j′: a PARAMETRIC node refuses where it is reached (interim) ──
+    # ── G9j / G9j′: a reached PARAMETRIC node is delivered through its instances (den-hoag-wpn8c) ──
     # A guard definition beside an attrset one folds the whole aspect into a guard carrier, static
-    # part included; as the only definition it is a guard leaf. Neither can be delivered, and both
-    # used to be dropped with no message.
-    test-parametric-node-refuses-when-reached =
-      let
-        split =
-          members:
-          server members [
-            {
-              aspects.p.nixos.marks = [ "attr" ];
-              aspects.c.nixos.marks = [ "c" ];
-            }
-            { aspects.p = hostFn; }
-          ];
-        single =
-          members:
-          server members [
-            {
-              aspects.p = hostFn;
-              aspects.c.nixos.marks = [ "c" ];
-            }
-          ];
-      in
-      {
-        expr = {
-          splitReached = refuses (marks (split [ "p" ]));
-          splitUnreached = marks (split [ "c" ]);
-          singleReached = refuses (marks (single [ "p" ]));
-          singleUnreached = marks (single [ "c" ]);
-        };
-        expected = {
-          splitReached = true;
-          splitUnreached = [ "c" ];
-          singleReached = true;
-          singleUnreached = [ "c" ];
-        };
+    # part included (`s`); as the only definition it is a guard leaf (`p`). Both are delivered from
+    # the instance the relation lists at the node; with no relation, both refuse by name.
+    test-parametric-node-is-delivered-when-reached = {
+      expr = {
+        split = builtins.all (m: builtins.elem m (fx.mW "na")) [
+          "attr"
+          "guard"
+        ];
+        single = builtins.elem "p" (fx.mW "na");
+        withoutInstances = refuses (fx.marksOf fx.noRel "na");
+        unreached = fx.mW "nc";
       };
+      expected = {
+        split = true;
+        single = true;
+        withoutInstances = true;
+        unreached = [ "c" ];
+      };
+    };
+    # W1 (htfv3 I1, I5): `na` and `nb` reach `e` through static `web`, and each instance's
+    # context-computed include names its own host.
+    test-instances-vary-by-entity = {
+      expr = {
+        na = fx.mW "na";
+        nb = fx.mW "nb";
+      };
+      expected = {
+        na = [
+          "ha"
+          "web"
+          "q"
+          "e"
+          "guard"
+          "attr"
+          "p"
+        ];
+        nb = [
+          "hb"
+          "web"
+          "r"
+          "q"
+          "e"
+        ];
+      };
+    };
+    # W5a / W5b (htfv3 I4, I4b): `q` nested inside `e`'s instance, and inside inline content of `ei`'s.
+    test-nested-instances-are-delivered = {
+      expr = {
+        inInstance = builtins.elem "q" (fx.mW "nb");
+        inInlineContent = fx.mW "nei";
+      };
+      expected = {
+        inInstance = true;
+        inInlineContent = [
+          "q"
+          "ei-inline"
+        ];
+      };
+    };
+    # W6 (htfv3 I7): static `hb`, reached inside `e@nb`, is walked at node scope, so its parametric
+    # `r` resolves through `reaches.nb`, never `nested`.
+    test-static-node-in-an-instance-walks-at-node-scope = {
+      expr = builtins.elem "r" (fx.mW "nb");
+      expected = true;
+    };
+    # W7 (htfv3 I8, delivery half): `fan` admits only the two user descendants, and both siblings are
+    # delivered. Their order is the producer's: instance ids ascending, a hash order, never the
+    # declaration's or the descendants'.
+    test-fan-out-delivers-every-sibling = {
+      expr = fx.mW "nf";
+      expected = [
+        "uA"
+        "uB"
+      ];
+    };
+    # W11: a `bindings` read forces no closure, with `instances` passed. `nmiss`'s closure refuses
+    # (it is handed no scope), so a bindings read that walked it would refuse too.
+    test-bindings-read-forces-no-closure-with-instances = {
+      expr = {
+        bindings = fx.withRel.nodes.nmiss.bindings.node.aspects;
+        closureRefuses = refuses (fx.mW "nmiss");
+      };
+      expected = {
+        bindings = [ "p" ];
+        closureRefuses = true;
+      };
+    };
+    # K1 (orchestrator ruling, defaulted, reversible): a guard reached in a HANDED scope where its
+    # condition is FALSE is no edge and delivers nothing. `nh` has no users and reaches `has user`
+    # `hm` directly; `nhe` reaches it nested in `eu`, whose tuple has no user. `nhu`, with a user
+    # descendant, is the condition-TRUE control.
+    test-condition-false-reach-delivers-nothing = {
+      expr = {
+        direct = fx.mW "nh";
+        nested = fx.mW "nhe";
+        conditionTrue = fx.mW "nhu";
+      };
+      expected = {
+        direct = [ "home" ];
+        nested = [ "eu" ];
+        conditionTrue = [
+          "home"
+          "hm"
+        ];
+      };
+    };
+    # den-hoag-ehkse, held visible until it lands: two guards with one condition and one non-class
+    # body mint ONE instance listed under both declarations, and the `I`-edge door refuses it.
+    # Control: distinct descriptions mint two, and both deliver.
+    test-collapsed-instance-refuses-at-the-i-edge = {
+      expr = {
+        collide = refuses fx.collide.marks;
+        distinct = fx.distinct.marks;
+      };
+      expected = {
+        collide = true;
+        distinct = [
+          "y"
+          "x"
+        ];
+      };
+    };
 
     # ── G9k: self-referential inline content refuses by name rather than exhausting memory ──
     test-cyclic-inline-content-refuses = {
