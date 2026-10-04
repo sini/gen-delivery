@@ -26,6 +26,7 @@
   lib,
   aspects,
   genMerge,
+  term,
   ...
 }:
 let
@@ -399,6 +400,21 @@ in
           [
             { aspects.p.nixos.marks = [ "attr" ]; }
             { aspects.p = hostGuard; }
+          ];
+      expectedError.msg = exactly guardLeaf;
+    };
+    # den-hoag-bgeum (gate C2): gen-aspects publishes a parametric declaration's members, `deferred`
+    # where an element reads the context. The closure stops at a guard leaf and never reads them: they
+    # exist only where its condition holds. So the reached guard node reads the interim refusal, never
+    # a sealed-content refusal naming a guard its include position does not hold.
+    test-parametric-guard-node-with-deferred-member-names-it = {
+      expr =
+        closureClasses
+          [ "p" ]
+          [
+            {
+              aspects.p = aspects.guard (aspects.pred.has "host") { includes = [ (term.readCtx "host" [ ]) ]; };
+            }
           ];
       expectedError.msg = exactly guardLeaf;
     };

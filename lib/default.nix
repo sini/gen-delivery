@@ -247,31 +247,38 @@ let
         inherit id;
         pos = [ ];
       };
+      # A guard leaf is a closure LEAF, as in gen-aspects' own static closure (`instancesFor`'s
+      # `paramsFrom`): its published members (`includeSitesOf`, `deferred` where context-dependent)
+      # exist only where its condition holds, so a static closure entering them would deliver
+      # conditional members unconditionally. The leaf itself refuses in `contentOf` (interim).
       succ =
         item:
-        builtins.concatLists (
-          prelude.imap0 (
-            i: site:
-            let
-              pos = item.pos ++ [ i ];
-            in
-            if site.kind == "local" then
-              [ (nodeItem site.target) ]
-            else if site.kind == "content" then
-              [
-                {
-                  key = [ item.id ] ++ pos;
-                  inherit (item) id;
-                  inherit pos;
-                  inherit (site) sites;
-                }
-              ]
-            else if site.kind == "foreign" then
-              throw (foreignIncludeRefusal item.id (at pos) site.ref)
-            else
-              throw (sealedIncludeRefusal item.id (at pos))
-          ) (if item.pos == [ ] then facts.includeSitesOf.${item.id} else item.sites)
-        );
+        if item.pos == [ ] && aspects.isGuardLeaf facts.nodeData.${item.id} then
+          [ ]
+        else
+          builtins.concatLists (
+            prelude.imap0 (
+              i: site:
+              let
+                pos = item.pos ++ [ i ];
+              in
+              if site.kind == "local" then
+                [ (nodeItem site.target) ]
+              else if site.kind == "content" then
+                [
+                  {
+                    key = [ item.id ] ++ pos;
+                    inherit (item) id;
+                    inherit pos;
+                    inherit (site) sites;
+                  }
+                ]
+              else if site.kind == "foreign" then
+                throw (foreignIncludeRefusal item.id (at pos) site.ref)
+              else
+                throw (sealedIncludeRefusal item.id (at pos))
+            ) (if item.pos == [ ] then facts.includeSitesOf.${item.id} else item.sites)
+          );
       # The entry an item delivers: a node's value, or the element at the site's position inside the
       # host's `includes`, descending through each level's `includes`.
       contentOf =

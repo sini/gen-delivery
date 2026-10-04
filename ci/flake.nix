@@ -96,6 +96,10 @@
           genSchema
           nixpkgs
           ;
+        # gen-aspects' own term formers, minted by its own gen-identity, for a guard body that reads
+        # the context (a term crosses into gen-aspects' guard, so it is built by that pin's algebra).
+        term =
+          (gen-aspects.inputs.gen-algebra.lib.term gen-aspects.inputs.gen-identity.lib.hashIdentity).term;
       };
       # Cells whose subject is an error MESSAGE cannot live under `testModules`: the batch asserter
       # behind `checks.default` quantifies over `flake.tests` and forces every `expr`
