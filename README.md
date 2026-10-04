@@ -96,6 +96,20 @@ forces the whole relation at its root, a `bindings` read included.
 type, an id that is not a string, an id with no vertex, a vertex without an attrset `entry`, and an
 instance listed under an aspect its `instantiates` edge does not name.
 
+**Element identity.** Each node entry carries `elementIds = { <delivery class> = [ <id or null> … ]; }`
+beside `classes`, with the same keys and, per class, one entry per delivered module at its position:
+what the node delivered, by identity. A named aspect's entry is its facts id, an instance's is its
+vertex id, and inline content's is `null` (its position is an address, not a name). Delivery is the
+relation *node delivers element* (ADR-0010 §4(a), ADR-0012), and `classes` and `elementIds` are its
+two projections over one walk, so they cannot disagree; one instance that two nodes reach is one id
+in both nodes' lists, which is how shared evaluation is observed. `realize` reads only `classes`.
+
+**Fan-out siblings** are delivered in the relation's edge order, which gen-aspects lists in the
+scope's declared `descendants` order, never by instance id. A terminal's list merge reverses module
+order, so a list option realizes the siblings in that order **reversed**, as it does a node's
+members. The order is the caller's: that `descendants` is a declared order invariant under
+presentation (ADR-0029) is owed by whoever builds the scopes, not discharged here.
+
 A member is an aspect **identifier** (its key), resolved through `graphFacts`' `nodeIdOf`; a member
 naming no aspect, or written as a declaration value, is refused by name. Every refusal fires only
 for a node that reaches the bad include. The order is breadth-first by default, and that default is

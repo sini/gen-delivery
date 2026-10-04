@@ -25,6 +25,14 @@ let
       term
       ;
   };
+  sx = import ../shared-eval-fixture.nix {
+    inherit
+      genDelivery
+      aspects
+      genMerge
+      term
+      ;
+  };
   t = genMerge.types;
   cnf.keySemantics.nixos.category = "class";
 
@@ -558,15 +566,181 @@ in
       expected = true;
     };
     # W7 (htfv3 I8, delivery half): `fan` admits only the two user descendants, and both siblings are
-    # delivered. Their order is the producer's: instance ids ascending, a hash order, never the
-    # declaration's or the descendants'.
+    # delivered, in the producer's edge order: the scope's `descendants` as declared (gen-aspects
+    # `instancesFor`). The realized list is that order REVERSED by the list merge, so `nf`'s
+    # `[ u1 u2 ]` reads `[ uB uA ]`, and `nfr`'s `[ u2 u1 ]` reads `[ uA uB ]`. RED (ascending or
+    # descending instance id): both arms read one list.
     test-fan-out-delivers-every-sibling = {
-      expr = fx.mW "nf";
-      expected = [
-        "uA"
-        "uB"
-      ];
+      expr = {
+        declared = fx.mW "nf";
+        reversed = fx.mW "nfr";
+      };
+      expected = {
+        declared = [
+          "uB"
+          "uA"
+        ];
+        reversed = [
+          "uA"
+          "uB"
+        ];
+      };
     };
+    # ── htfv3 U3: element identity beside delivered content (`elementIds`) ──
+    # B1 (I2): each delivered element's id, positionally beside `classes` — a named node's facts id, an
+    # instance's vertex id, inline content `null`. S is one vertex a and b both reach, so one id; each
+    # entity's E is its own. RED (an id per reaching node): S's id differs at a and b; (the view
+    # `remint`, b's S under a fresh id on the same vertex): b's id differs while its marks do not, so
+    # this cell alone gates it.
+    test-element-ids-name-what-was-delivered = {
+      expr = {
+        a = sx.shared.nodes.a.elementIds.T1;
+        b = sx.shared.nodes.b.elementIds.T1;
+        c = sx.shared.nodes.c.elementIds.T2;
+        remint = {
+          id = builtins.head sx.remint.nodes.b.elementIds.T1;
+          marks = sx.marksOf sx.remint.nodes.b.classes.T1 == sx.marksOf sx.shared.nodes.b.classes.T1;
+        };
+      };
+      expected = {
+        a = [
+          sx.sA
+          (sx.eOf "a")
+          "w"
+          "ha"
+          null
+        ];
+        b = [
+          sx.sA
+          (sx.eOf "b")
+          "w"
+          "hb"
+          null
+        ];
+        c = [
+          (sx.eOf "c")
+          "w"
+          "hc"
+          null
+        ];
+        remint = {
+          id = "aspect-instance:remint-b";
+          marks = true;
+        };
+      };
+    };
+    # B2: `elementIds` and `classes` have one key set and one length per class at every node; `nx`,
+    # reached with no class content, is in neither. RED (ids over every reached item): a's lengths differ.
+    test-element-ids-align-with-classes = {
+      expr = builtins.mapAttrs (
+        n: _:
+        let
+          node = sx.shared.nodes.${n};
+        in
+        builtins.attrNames node.elementIds == builtins.attrNames node.classes
+        && builtins.all (k: builtins.length node.elementIds.${k} == builtins.length node.classes.${k}) (
+          builtins.attrNames node.classes
+        )
+      ) sx.dc;
+      expected = {
+        a = true;
+        b = true;
+        c = true;
+      };
+    };
+    # B3 (map × instances): instance content follows the delivery-class map, so a and b realize under
+    # T1 (pin p1, peers a and b) with their S and E, c under T2, and `elementIds` is keyed as `classes`.
+    # RED (ids keyed by authored class): keys `T`; (instance items deliver no classes): no `e`, `s`.
+    test-instances-follow-the-delivery-class-map = {
+      expr = {
+        realized = builtins.mapAttrs (
+          _: builtins.mapAttrs (_: r: { inherit (r) pin marks peers; })
+        ) sx.realized;
+        keys = builtins.mapAttrs (n: _: builtins.attrNames sx.shared.nodes.${n}.elementIds) sx.dc;
+      };
+      expected = {
+        realized = {
+          T1 = {
+            a = {
+              pin = "p1";
+              marks = [
+                "inl"
+                "ha"
+                "w"
+                "e"
+                "s"
+              ];
+              peers = [
+                "a"
+                "b"
+              ];
+            };
+            b = {
+              pin = "p1";
+              marks = [
+                "inl"
+                "hb"
+                "w"
+                "e"
+                "s"
+              ];
+              peers = [
+                "a"
+                "b"
+              ];
+            };
+          };
+          T2.c = {
+            pin = "p2";
+            marks = [
+              "inl"
+              "hc"
+              "w"
+              "e"
+            ];
+            peers = [ "c" ];
+          };
+        };
+        keys = {
+          a = [ "T1" ];
+          b = [ "T1" ];
+          c = [ "T2" ];
+        };
+      };
+    };
+    # B4 (I8, ids half): each fan-out sibling is its own element, and the first two ids are the
+    # relation's edge list exactly. RED (an id per reaching node): they differ.
+    test-fan-out-siblings-are-their-own-elements = {
+      expr = builtins.genList (builtins.elemAt sx.fanned.nodes.f.elementIds.T) 2;
+      expected = sx.rel.reaches.f.fan;
+    };
+    # B5 (I6, C2's direct-member domain): per entity, the realized digest of the shared arm equals the
+    # desugared cold arm's. The views name what parity discriminates: `merged` (every entity reads
+    # a's E) moves b and c; `rotated` (each E vertex holds another entity's application) moves all three.
+    test-shared-evaluation-is-parity-with-the-cold-arm =
+      let
+        moved =
+          p: builtins.filter (n: (sx.parity p).${n} != (sx.parity sx.cold).${n}) (builtins.attrNames sx.dc);
+      in
+      {
+        expr = {
+          shared = moved sx.shared;
+          merged = moved sx.merged;
+          rotated = moved sx.rotated;
+        };
+        expected = {
+          shared = [ ];
+          merged = [
+            "b"
+            "c"
+          ];
+          rotated = [
+            "a"
+            "b"
+            "c"
+          ];
+        };
+      };
     # W11: a `bindings` read forces no closure, with `instances` passed. `nmiss`'s closure refuses
     # (it is handed no scope), so a bindings read that walked it would refuse too.
     test-bindings-read-forces-no-closure-with-instances = {

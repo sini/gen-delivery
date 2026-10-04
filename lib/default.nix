@@ -230,8 +230,18 @@ let
   # deferredModules of each class across the INCLUDE CLOSURE of the aspects the node declares
   # membership in (`node.aspects`). `nodes` is the checked result of the caller's `selectNodes`
   # (see `project`). Yields
-  #   { <node> = { bindings = { node = <resolved instance>; }; classes = { <delivery class> = [ <deferredModule> ]; }; }; }
+  #   { <node> = { bindings = { node = <resolved instance>; }; classes = { <delivery class> = [ <deferredModule> ]; };
+  #                elementIds = { <delivery class> = [ <id or null> ]; }; }; }
   # PURE — no nixpkgs; the deferredModules stay unforced (opaque) until the terminal imports them.
+  #
+  # ── WHAT WAS DELIVERED IS NAMED BESIDE IT (den-hoag-htfv3) ──
+  # Delivery is a relation, node delivers element, where an element is a named aspect or an instance
+  # vertex (ADR-0010 §4(a); ADR-0012: one graph, two node kinds). `classes` is its positional
+  # projection onto content and `elementIds` its projection onto identity: both read one list of
+  # reached elements (ADR-0012 clause 2, one walk, two materialised views), so their keys and
+  # positions agree by construction. A named aspect's id is its facts id, an instance's its vertex id
+  # (each fan-out sibling its own), and inline content's `null`: its walk key is an address, never a
+  # name. One vertex two nodes reach is one id in both lists. `realize` reads neither.
   #
   # ── CONTENT IS COLLECTED BY AUTHORED CLASS AND KEYED BY DELIVERY CLASS ──
   # `deliveryClasses.<node>.<authored class>` names the delivery class that authored class's list
@@ -425,18 +435,38 @@ let
     builtins.mapAttrs (
       nodeName: inst:
       let
-        reached = map contentOf (
-          builtins.genericClosure {
-            startSet = builtins.concatMap (k: reach nodeName null (memberId nodeName k)) (inst.aspects or [ ]);
-            operator = succ nodeName;
+        reached =
+          map
+            (
+              item:
+              let
+                entry = contentOf item;
+              in
+              {
+                inherit entry;
+                classes = deliveryClassesOf cnf entry;
+                eid = if item.pos == [ ] then item.id else null;
+              }
+            )
+            (
+              builtins.genericClosure {
+                startSet = builtins.concatMap (k: reach nodeName null (memberId nodeName k)) (inst.aspects or [ ]);
+                operator = succ nodeName;
+              }
+            );
+        authored = dedup (builtins.concatMap (r: r.classes) reached);
+        # Per delivery class: its one authored class and the reached elements carrying it, in
+        # closure order. `classes` and `elementIds` are two positional projections of this list.
+        delivered = builtins.mapAttrs (
+          _: as:
+          let
+            a = builtins.head as;
+          in
+          {
+            inherit a;
+            elements = builtins.filter (r: builtins.elem a r.classes) reached;
           }
-        );
-        authored = dedup (builtins.concatMap (deliveryClassesOf cnf) reached);
-        collectClass =
-          class:
-          builtins.concatMap (
-            entry: if builtins.elem class (deliveryClassesOf cnf entry) then [ entry.${class} ] else [ ]
-          ) reached;
+        ) groups;
         entryMap = deliveryClasses.${nodeName} or { };
         groups = builtins.groupBy (a: entryMap.${a} or a) authored;
         _collisionCheck = builtins.foldl' (
@@ -452,7 +482,10 @@ let
           node = inst;
         };
         classes = builtins.seq _collisionCheck (
-          builtins.mapAttrs (_: as: collectClass (builtins.head as)) groups
+          builtins.mapAttrs (_: d: map (r: r.entry.${d.a}) d.elements) delivered
+        );
+        elementIds = builtins.seq _collisionCheck (
+          builtins.mapAttrs (_: d: map (r: r.eid) d.elements) delivered
         );
       }
     ) nodes;
