@@ -74,6 +74,7 @@ in
   algebra ? inputs.gen-algebra or (dep [ "gen-algebra" ]),
   aspects ? inputs.gen-aspects or (dep [ "gen-aspects" ]),
   prelude ? inputs.gen-prelude or (dep [ "gen-prelude" ]),
+  scope ? inputs.gen-scope or (dep [ "gen-scope" ]),
 }:
 # THE BODY IS EAGER, AND THAT IS WHAT MAKES THE ENTRY CELL TOTAL RATHER THAN PARTIAL. `forced` forces
 # every wired dependency to WHNF before `./lib` sees it, so a default that cannot resolve is loud AT
@@ -89,7 +90,14 @@ in
 # this reaches each dependency's root VALUE and never a member of it. A library that deliberately
 # refuses to build some member is therefore not an exception to it.
 let
-  deps = { inherit algebra aspects prelude; };
+  deps = {
+    inherit
+      algebra
+      aspects
+      prelude
+      scope
+      ;
+  };
   forced = builtins.deepSeq (builtins.mapAttrs (_: builtins.typeOf) deps) null;
 in
 builtins.seq forced (wire {

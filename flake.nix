@@ -31,6 +31,7 @@
     gen-algebra.url = "github:sini/gen-algebra";
     gen-aspects.url = "github:sini/gen-aspects";
     gen-prelude.url = "github:sini/gen-prelude";
+    gen-scope.url = "github:sini/gen-scope";
   };
 
   outputs = _: {
