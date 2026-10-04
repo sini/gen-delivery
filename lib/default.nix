@@ -22,6 +22,9 @@
 # off the record (den-hoag-7gp66 P1). A missing or unknown field is then a refusal naming the door
 # that `builtins.tryEval` catches, where a native closed formal aborted past it.
 #
+# `scope` arrives the same way, as gen-assemble takes it: gen-scope's engine, the one resolution
+# calculus, through which `project` runs the receiver-rooted query that certifies each node's walk.
+#
 # ── AND THE ORDERED FOLD IS NOT WRITTEN HERE ──
 # The contribution merge is `algebra.record.foldLayers`: an ordered layer list, least-specific
 # first, last wins, no strength lattice, an unknown per-field strategy refused by name. That is
@@ -72,6 +75,7 @@
   algebra,
   aspects,
   prelude,
+  scope,
 }:
 let
   # ── THE DECLARED CONTRIBUTION ORDER ──
@@ -219,6 +223,19 @@ let
   declinedNotListRefusal =
     scope: v:
     "gen-delivery: project: the instance relation's declined aspects at '${scope}' must be a list of aspect ids, got ${builtins.typeOf v}";
+  # The walk derives membership and order; the query certifies that membership by refusal. Both read
+  # one materialised projection, so a vertex one holds and the other does not is a relation that
+  # lists an edge the declared include sites never walk (first arm), or a vertex the query withholds
+  # (second arm; unreachable while `marks` is empty).
+  projectionParityRefusal =
+    node: v: inQuery:
+    "gen-delivery: project: node '${node}' "
+    + (
+      if inQuery then
+        "reaches '${v}' through the instance relation's edges, and its declared include sites never reach it: the relation was minted over other members or another tree than project reads"
+      else
+        "delivers '${v}' in declared order, and the receiver-rooted query never reaches it"
+    );
   # Both sides are named "land in" because the identity side was not sent by any entry.
   deliveryCollisionRefusal =
     node: dc: authored:
@@ -265,6 +282,11 @@ let
   #   foreign  refused by name: a reference into a tree this one does not hold;
   #   sealed   refused by name: parametric content with no declaration id.
   #
+  # The walk is certified by a second reader of the same facts: gen-scope's `resolve`, rooted at the
+  # receiver over one lifted graph per call (`(members | reaches) (includes | nested)*`). Its answer
+  # set must equal the walk's delivered vertices, or the node refuses by name. The walk derives;
+  # the query certifies.
+  #
   # ── A PARAMETRIC NODE IS DELIVERED THROUGH ITS INSTANCES (ADR-0010 §4(a); van Antwerpen 2018 §2.5) ──
   # A guard leaf is never a walk item: its declaration's members exist only where its condition
   # holds, so a static walk through it would deliver them unconditionally. Where it is reached it is
@@ -293,7 +315,8 @@ let
   #
   # THE CALLER'S OBLIGATION. The relation must be minted over the same `values.aspects` and `cnf`,
   # the same members, and the same sources and descendants that `project`'s nodes stand for. `project`
-  # detects a member the scope omitted and an id the relation's tree never walked (both arm 2). It
+  # detects a member the scope omitted and an id the relation's tree never walked (both arm 2), and an
+  # edge `reaches.<node>` lists for an aspect the node's include sites never reach (the parity door). It
   # cannot detect (i) a wrong source or descendant, since it never sees sources: a FALSE there is
   # genuine for what was handed; (ii) a relation over another tree that walks the same id and decides
   # it FALSE; (iii) for a TRUE reach, a relation over another tree, which delivers that tree's content.
@@ -424,6 +447,109 @@ let
                 facts.includeSitesOf.${item.id}
             )
         );
+      # ── THE ONE GRAPH, LIFTED, AND THE RECEIVER-ROOTED QUERY THAT CERTIFIES THE WALK ──
+      # One evaluated `scope` per `project` call, shared by every receiver (gen-bind's crossing
+      # adapter set lifts the same way), queried through the one calculus, gen-scope's `resolve`
+      # (ADR-0006, ADR-0010 §1). The query does not decide membership: the walk above derives
+      # membership and order over the materialised projection, and the query's answer set must equal
+      # the walk's vertex set or the node refuses (THE PROJECTION-PARITY DOOR, below).
+      # Vertices: each receiver (keyed `toJSON [ <node> ]`, a key space no hash identity enters),
+      # each facts node, each instance vertex. Edges, every one a fact of an earlier stratum:
+      #   members  receiver → each member's facts id
+      #   reaches  receiver → every instance the relation lists at its scope (`reaches.<node>`)
+      #   includes facts node or instance → each local target at its sites, through inline content
+      #            (static targets; at a facts node also the guard declarations reached at node scope)
+      #   nested   instance → the instances the relation lists inside it (`nested.<iid>`)
+      # Edges are total over malformed relation shapes: the named doors fire in the ordered fold.
+      rid = n: builtins.toJSON [ n ];
+      isVertex = v: builtins.isString v && instances.vertices ? ${v};
+      localTargets =
+        sites:
+        builtins.concatMap (
+          s:
+          if s.kind == "local" then
+            [ s.target ]
+          else if s.kind == "content" then
+            localTargets s.sites
+          else
+            [ ]
+        ) sites;
+      listed =
+        e:
+        if builtins.isAttrs e then
+          builtins.concatMap (l: if builtins.isList l then builtins.filter isVertex l else [ ]) (
+            builtins.attrValues e
+          )
+        else
+          [ ];
+      entryOf = v: instances.vertices.${v}.entry or { };
+      instTargets =
+        v: if builtins.isAttrs (entryOf v) then localTargets (sitesOfEntry (entryOf v)) else [ ];
+      lifted =
+        scope.eval
+          {
+            parseParent = _: null;
+          }
+          {
+            children = _: _: { };
+            marks = _: _: [ ];
+            edges-members =
+              _: v:
+              if receivers ? ${v} then
+                map (memberId receivers.${v}) (nodes.${receivers.${v}}.aspects or [ ])
+              else
+                [ ];
+            edges-reaches =
+              _: v: if receivers ? ${v} then listed (instances.reaches.${receivers.${v}} or null) else [ ];
+            edges-includes =
+              _: v:
+              if facts.nodeData ? ${v} then
+                (if aspects.isGuardLeaf facts.nodeData.${v} then [ ] else localTargets facts.includeSitesOf.${v})
+              else if isVertex v then
+                builtins.filter (t: !(aspects.isGuardLeaf facts.nodeData.${t})) (instTargets v)
+              else
+                [ ];
+            edges-nested = _: v: if isVertex v then listed (instances.nested.${v} or null) else [ ];
+          }
+          (
+            scope.buildRoots {
+              parentGraph = scope.vertices (
+                builtins.attrNames receivers
+                ++ builtins.attrNames facts.nodeData
+                ++ builtins.attrNames instances.vertices
+              );
+            }
+          );
+      receivers = builtins.listToAttrs (
+        map (n: {
+          name = rid n;
+          value = n;
+        }) (builtins.attrNames nodes)
+      );
+      wf = scope.wellFormed {
+        alphabet = [
+          "members"
+          "reaches"
+          "includes"
+          "nested"
+        ];
+        expression = "(members | reaches) (includes | nested)*";
+      };
+      # The query's answers, read as a SET: nothing below orders over them, so any permutation of
+      # `resolve`'s answers gives byte-identical output.
+      reachedBy =
+        nodeName:
+        builtins.listToAttrs (
+          map
+            (a: {
+              name = a.node;
+              value = null;
+            })
+            (scope.resolve {
+              inherit wf;
+              dataFilter = _: true;
+            } lifted (rid nodeName)).answers
+        );
       # The entry an item delivers: a node's value or an instance's entry, or the element at the
       # site's position inside its host's `includes`, descending through each level's `includes`.
       contentOf =
@@ -435,25 +561,51 @@ let
     builtins.mapAttrs (
       nodeName: inst:
       let
-        reached =
-          map
-            (
-              item:
-              let
-                entry = contentOf item;
-              in
-              {
-                inherit entry;
-                classes = deliveryClassesOf cnf entry;
-                eid = if item.pos == [ ] then item.id else null;
-              }
-            )
-            (
-              builtins.genericClosure {
-                startSet = builtins.concatMap (k: reach nodeName null (memberId nodeName k)) (inst.aspects or [ ]);
-                operator = succ nodeName;
-              }
-            );
+        # The walk: membership AND declared order (shortlex over declared positions), over the
+        # materialised projection ADR-0019 names as the ordering input. It is permanent: on a lift
+        # independent of the receiver, a node-scope instance sits one `reaches` step from the root,
+        # so no enumeration of the query's answers places it at its include site.
+        walk = builtins.genericClosure {
+          startSet = builtins.concatMap (k: reach nodeName null (memberId nodeName k)) (inst.aspects or [ ]);
+          operator = succ nodeName;
+        };
+        inQuery = reachedBy nodeName;
+        inFold = builtins.listToAttrs (
+          map (i: {
+            name = i.id;
+            value = null;
+          }) (builtins.filter (i: i.pos == [ ]) walk)
+        );
+        delivers =
+          v:
+          (instances.vertices ? ${v})
+          || (facts.nodeData ? ${v} && !(aspects.isGuardLeaf facts.nodeData.${v}));
+        # THE PROJECTION-PARITY DOOR: the query certifies the walk's membership by refusal. Guards
+        # and inline positions are not delivered vertices, so neither side counts them.
+        _parity =
+          let
+            extra = builtins.filter (v: delivers v && !(inFold ? ${v})) (builtins.attrNames inQuery);
+            missing = builtins.filter (v: !(inQuery ? ${v})) (builtins.attrNames inFold);
+          in
+          if extra != [ ] then
+            throw (projectionParityRefusal nodeName (builtins.head extra) true)
+          else if missing != [ ] then
+            throw (projectionParityRefusal nodeName (builtins.head missing) false)
+          else
+            null;
+        reached = builtins.seq _parity (
+          map (
+            item:
+            let
+              entry = contentOf item;
+            in
+            {
+              inherit entry;
+              classes = deliveryClassesOf cnf entry;
+              eid = if item.pos == [ ] then item.id else null;
+            }
+          ) walk
+        );
         authored = dedup (builtins.concatMap (r: r.classes) reached);
         # Per delivery class: its one authored class and the reached elements carrying it, in
         # closure order. `classes` and `elementIds` are two positional projections of this list.

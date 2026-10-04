@@ -19,6 +19,10 @@
     # it — nothing here compares a value that crosses between the two, so a single instance of each
     # is all the acceptance run owes.
     gen-algebra.url = "github:sini/gen-algebra";
+
+    # The resolution calculus `project`'s query runs in, injected like the other three. Cells
+    # doctor its `resolve` (`genDeliveryWith`) to show the query is read, and read as a set.
+    gen-scope.url = "github:sini/gen-scope";
   };
 
   outputs =
@@ -26,6 +30,7 @@
       gen-harness,
       gen-aspects,
       gen-algebra,
+      gen-scope,
       nixpkgs,
       ...
     }:
@@ -39,7 +44,18 @@
       genMerge = gen-aspects.inputs.gen-merge.lib;
       genSchema = gen-aspects.inputs.gen-schema.lib;
 
-      genDelivery = import ../lib { inherit algebra aspects prelude; };
+      scope = gen-scope.lib;
+      genDeliveryWith =
+        scope:
+        import ../lib {
+          inherit
+            algebra
+            aspects
+            prelude
+            scope
+            ;
+        };
+      genDelivery = genDeliveryWith scope;
 
       # The fixture builder: a real aspect schema, resolved through gen-merge's byte-mode
       # `evalModuleTree`, exactly as a consumer's own composition would reach this surface. It
@@ -89,6 +105,8 @@
       specialArgs = {
         inherit
           genDelivery
+          genDeliveryWith
+          scope
           mkFixture
           aspects
           algebra

@@ -9,6 +9,7 @@ genDelivery = inputs.gen-delivery.lib {
   algebra = inputs.gen-algebra.lib;
   aspects = inputs.gen-aspects.lib;
   prelude = inputs.gen-prelude.lib;
+  scope = inputs.gen-scope.lib;
 };
 
 projected = genDelivery.project {
@@ -87,7 +88,8 @@ members, in declared order:
 **The caller's obligation.** `instances` must be minted over the same `values.aspects` and `cnf`,
 the same members, and the same sources and descendants that `project`'s nodes stand for. `project`
 detects a member a scope omitted and an id the relation's tree never walked, both by the undecided
-door. It cannot detect a wrong source or descendant (it never sees sources), nor a relation over
+door, and an instance `reaches.<node>` lists that the node's include sites never reach, by the
+projection-parity door below. It cannot detect a wrong source or descendant (it never sees sources), nor a relation over
 another tree that walks the same id: one that decides it FALSE delivers nothing, and one that lists
 an instance delivers that tree's content, both at rc 0. Every `project` call carrying `instances`
 forces the whole relation at its root, a `bindings` read included.
@@ -95,6 +97,25 @@ forces the whole relation at its root, a `bindings` read included.
 `instances` refuses by name when it is not the five-field record `{ vertices; instantiates; reaches; nested; declined = { reaches; nested; }; }` of attrsets (a four-field relation from an older gen-aspects is refused, never read as nothing declined), and where the walk reads it: an edge set, edge list or declined list of the wrong
 type, an id that is not a string, an id with no vertex, a vertex without an attrset `entry`, and an
 instance listed under an aspect its `instantiates` edge does not name.
+
+**The query certifies the walk.** The walk above derives each node's membership and its declared
+order over the instance relation, the materialised projection gen-aspects publishes. Beside it,
+`project` runs a receiver-rooted query through the one resolution calculus, gen-scope's `resolve`
+with `(members | reaches) (includes | nested)*` in mode `reachable`, over one graph lifted per call
+from `graphFacts` and the instance relation. The query's answers are read as a set, so their order
+never reaches the output, and that set must equal the walk's delivered vertices or the node
+**refuses by name** (the projection-parity door): either the relation lists an instance the node's
+include sites never reach (minted over other members or another tree), or the walk delivers a
+vertex the query never reaches. The query certifies membership; it does not decide it, and the walk
+is permanent: on a graph shared by every receiver, a node-scope instance hangs off the receiver, so
+no enumeration of answers can place it at its include site. Inline content is not a vertex; the
+walk delivers it at its position, as before.
+
+**The price, stated.** On a node that reaches a static diamond, a node-scope instance and a nested
+one, reading every node's `classes` and `elementIds` costs about twice the walk alone: 2,089 → 4,138
+thunks per node (×1.98, host Nix). Reading one node costs 722 → 742 (the lift's vertex list). That
+is the graph layer only; an entity's class fixpoint, which this does not touch, dominates its cost.
+gen-delivery is not yet a member of the hub's perf bench, so no bench row measures this.
 
 **Element identity.** Each node entry carries `elementIds = { <delivery class> = [ <id or null> … ]; }`
 beside `classes`, with the same keys and, per class, one entry per delivered module at its position:

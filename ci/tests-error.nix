@@ -23,6 +23,8 @@
 # built by ESCAPING THE LITERAL TEXT rather than by hand.
 {
   genDelivery,
+  genDeliveryWith,
+  scope,
   lib,
   aspects,
   genMerge,
@@ -143,6 +145,42 @@ let
   declinedNotList =
     scope: t:
     "gen-delivery: project: the instance relation's declined aspects at '${scope}' must be a list of aspect ids, got ${t}";
+  # THE PROJECTION-PARITY DOOR's two arms (den-hoag-htfv3-stage-c-graph-query-xm29n). The vertex
+  # named is the least of the ones in dispute.
+  parity =
+    node: v: inQuery:
+    "gen-delivery: project: node '${node}' "
+    + (
+      if inQuery then
+        "reaches '${v}' through the instance relation's edges, and its declared include sites never reach it: the relation was minted over other members or another tree than project reads"
+      else
+        "delivers '${v}' in declared order, and the receiver-rooted query never reaches it"
+    );
+  least = xs: builtins.head (builtins.sort builtins.lessThan xs);
+  # S1: `project` built with a `scope` whose `resolve` answers nothing.
+  fxEmptied = import ./parametric-fixture.nix {
+    genDelivery = genDeliveryWith (
+      scope
+      // {
+        resolve =
+          o: s: from:
+          scope.resolve o s from // { answers = [ ]; };
+      }
+    );
+    inherit aspects genMerge term;
+  };
+  # S3: `reaches.na` over-lists `nei`'s instance of `ei`, minted at another scope.
+  eiAtNei = builtins.head fx.rel.reaches.nei.ei;
+  overlisted = fx.withView (
+    fx.rel
+    // {
+      reaches = fx.rel.reaches // {
+        na = fx.rel.reaches.na // {
+          inherit (fx.rel.reaches.nei) ei;
+        };
+      };
+    }
+  ) "na";
   # The parametric fixture's views, each planted with one fault on `na`'s edge to `p`.
   pAtNa = fx.iidOf "na" "p";
   plant = view: fx.withView (fx.rel // view) "na";
@@ -449,6 +487,25 @@ in
             }
           ];
       expectedError.msg = exactly (noInstance "server" "p" null);
+    };
+
+    # ── THE PROJECTION-PARITY DOOR ──
+    # S1: an emptied query refuses by the second arm, naming the least vertex `na`'s walk delivers.
+    # RED (the walk alone, no query read): `na` delivers `[ web, inst ×4, ha ]` at rc 0.
+    test-emptied-query-names-the-parity-door = {
+      expr = fxEmptied.withRel.nodes.na.elementIds;
+      expectedError.msg = exactly (parity "na" (least fx.withRel.nodes.na.elementIds.nixos) false);
+    };
+    # S3: an instance `reaches.na` lists and `na`'s include sites never reach refuses by the first
+    # arm, naming the least over-listed vertex (`ei@nei` or an instance nested in it). RED (the walk
+    # alone): `na` delivers unchanged at rc 0.
+    test-over-listed-relation-names-the-parity-door = {
+      expr = overlisted;
+      expectedError.msg = exactly (
+        parity "na" (least (
+          [ eiAtNei ] ++ builtins.concatLists (builtins.attrValues fx.rel.nested.${eiAtNei})
+        )) true
+      );
     };
 
     # ── THE INSTANCE RELATION'S DOORS (den-hoag-wpn8c) ──

@@ -2,16 +2,16 @@
 
 > **Library class: reference-grade.** Deletion requires a domain argument — wrong abstraction, subsumption by another construct, or theory-unsoundness; a usage count is inadmissible as a deletion ground (P7, 2026-08-17).
 
-The delivery-class realization surface. Three declared, unapplied root inputs (gen-algebra, gen-aspects,
-gen-prelude); substrate injected; nixpkgs-lib-free.
+The delivery-class realization surface. Four declared, unapplied root inputs (gen-algebra, gen-aspects,
+gen-prelude, gen-scope); substrate injected; nixpkgs-lib-free.
 `lib/default.nix` is the whole library — one file, because the row this executes calls the
 projection and the fold **one construct** and they are one: the realization predicate lives in the
 first half and the fold that trusts it lives in the second.
 
 ## published surface
 
-`{ algebra, aspects, prelude }` in; `{ project, realize, defaultLayerOrder }` out. Root `default.nix`'s
-`wire ? { deps, resolve, lock }: import ./lib deps` formal is what hands this `{ algebra, aspects, prelude }`
+`{ algebra, aspects, prelude, scope }` in; `{ project, realize, defaultLayerOrder }` out. Root `default.nix`'s
+`wire ? { deps, resolve, lock }: import ./lib deps` formal is what hands this `{ algebra, aspects, prelude, scope }`
 attrset to the library as `deps`, and it is also the shim's only outward channel — a formal is an
 INPUT channel and cannot carry a value out, so the lock-parameterised `follows` resolver rides out on
 the same record. Overriding `wire` is how a cell reads the shim's own formal-to-path map AND its own
@@ -167,16 +167,16 @@ already applied it — re-run and read `0 changed`.
 ## Drift check
 
 `nix eval --json .#lib --apply builtins.attrNames` — the form 23 sibling sheets publish —
-**aborts here**. The library is a function of `{ algebra, aspects, prelude }`, so the flake's `lib` output is
+**aborts here**. The library is a function of `{ algebra, aspects, prelude, scope }`, so the flake's `lib` output is
 a lambda and the apply reads *"expected a set but found a function"*. The check has to supply a
 substrate, and it supplies the ACCEPTANCE RUN's own — `ci/flake.nix`'s `gen-algebra`,
-`gen-aspects` and the gen-prelude reached through it, resolved through `ci/flake.lock` — rather than pinning a second one, which would make
+`gen-aspects`, `gen-scope` and the gen-prelude reached through gen-aspects, resolved through `ci/flake.lock` — rather than pinning a second one, which would make
 the checked surface a different construction from the tested one. There is no `ci/repl.nix` here, so
 the splice is inline; resolving a local flake from an expression is what `--impure` pays for. From
 the repository root:
 
 ```sh
-nix eval --json --impure --expr 'let ci = builtins.getFlake (toString ./ci); in builtins.attrNames (import ./lib { algebra = ci.inputs.gen-algebra.lib; aspects = ci.inputs.gen-aspects.lib; prelude = ci.inputs.gen-aspects.inputs.gen-prelude.lib; })'
+nix eval --json --impure --expr 'let ci = builtins.getFlake (toString ./ci); in builtins.attrNames (import ./lib { algebra = ci.inputs.gen-algebra.lib; aspects = ci.inputs.gen-aspects.lib; prelude = ci.inputs.gen-aspects.inputs.gen-prelude.lib; scope = ci.inputs.gen-scope.lib; })'
 ```
 
 Current output (verbatim):
