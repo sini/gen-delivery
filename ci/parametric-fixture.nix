@@ -272,6 +272,8 @@ let
     };
 in
 {
+  # A named aspect's facts id, read from the facts and not from `project`'s output.
+  factIdOf = k: (aspects.graphFacts cnf values.aspects).nodeIdOf.${k};
   inherit
     rel
     projectWith
