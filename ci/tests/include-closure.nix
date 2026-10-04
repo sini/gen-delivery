@@ -604,16 +604,20 @@ in
         memberHanded = [ "p" ];
       };
     };
-    # den-hoag-ehkse, held visible until it lands: two guards with one condition and one non-class
-    # body mint ONE instance listed under both declarations, and the `I`-edge door refuses it.
-    # Control: distinct descriptions mint two, and both deliver.
-    test-collapsed-instance-refuses-at-the-i-edge = {
+    # den-hoag-ehkse: two guards with one condition and one non-class body, at two paths, are two
+    # declarations (identity design §1), so each delivers its own marks. RED (a guard keyed by its
+    # term): one instance listed under both, and the `I`-edge door refuses it. Control: distinct
+    # descriptions deliver both in either arm.
+    test-equal-body-guards-at-two-paths-deliver-both = {
       expr = {
-        collide = refuses fx.collide.marks;
+        collide = fx.collide.marks;
         distinct = fx.distinct.marks;
       };
       expected = {
-        collide = true;
+        collide = [
+          "y"
+          "x"
+        ];
         distinct = [
           "y"
           "x"
