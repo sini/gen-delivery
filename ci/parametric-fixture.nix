@@ -101,6 +101,7 @@ let
         ];
         nb.aspects = [ "web" ];
         nf.aspects = [ "fan" ];
+        nfr.aspects = [ "fan" ];
         nmiss.aspects = [ "p" ];
         nc.aspects = [ "c" ];
         nei.aspects = [ "ei" ];
@@ -143,6 +144,15 @@ let
         descendants = [
           { sources.user = src "u1"; }
           { sources.user = src "u2"; }
+        ];
+      };
+      # `nf`'s descendants reversed (W7's second arm).
+      nfr = {
+        members = [ "fan" ];
+        sources = { };
+        descendants = [
+          { sources.user = src "u2"; }
+          { sources.user = src "u1"; }
         ];
       };
       nei = host "nei" // {
