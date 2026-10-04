@@ -670,6 +670,50 @@ in
       };
     };
 
+    # den-hoag-gywcg: `aspects."f/x"` beside `aspects.f.x` are two declarations, and a node whose
+    # members name both receives both. RED (a raw "/" join): both render `f/x`, so the registry holds
+    # one and the `"f/x"` content is dropped at exit 0. Control: `f.y` beside `f.x` delivers both in
+    # either arm.
+    test-a-separator-segment-and-its-nesting-deliver-both =
+      let
+        sorted =
+          y:
+          builtins.sort builtins.lessThan (
+            marks (
+              server
+                [
+                  (aspects.pathKey [ y ])
+                  (aspects.pathKey [
+                    "f"
+                    "x"
+                  ])
+                ]
+                [
+                  {
+                    aspects.${y}.nixos.marks = [ "slash" ];
+                    aspects.f.x.nixos.marks = [ "nested" ];
+                  }
+                ]
+            )
+          );
+      in
+      {
+        expr = {
+          separator = sorted "f/x";
+          ctl = sorted "y";
+        };
+        expected = {
+          separator = [
+            "nested"
+            "slash"
+          ];
+          ctl = [
+            "nested"
+            "slash"
+          ];
+        };
+      };
+
     # ── G9k: self-referential inline content refuses by name rather than exhausting memory ──
     test-cyclic-inline-content-refuses = {
       expr = {
