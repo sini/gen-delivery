@@ -131,6 +131,12 @@ let
     "gen-delivery: project: node '${node}' reaches parametric aspect '${a}'"
     + (if inst == null then "" else " inside instance '${inst}'")
     + ", and the instance relation holds no instance of it there; project reads instances, it never mints them";
+  undecided =
+    node: a: inst:
+    "gen-delivery: project: node '${node}' reaches parametric aspect '${a}'"
+    + (if inst == null then "" else " inside instance '${inst}'")
+    + ", and the instance relation lists no instance of it there; the relation does not publish whether "
+    + "the guard was declined, so the reach is undecided and refuses (interim, until den-hoag-n8wb5)";
   # The parametric fixture's views, each planted with one fault on `na`'s edge to `p`.
   pAtNa = fx.iidOf "na" "p";
   plant = view: fx.withView (fx.rel // view) "na";
@@ -449,6 +455,21 @@ in
     test-unhanded-node-reaching-a-parametric-node-names-the-node-scope-door = {
       expr = fx.mW "nmiss";
       expectedError.msg = exactly (noInstance "nmiss" "p" null);
+    };
+    # K1 (interim, den-hoag-n8wb5): an empty reach in a handed scope refuses as undecided, whether the
+    # guard's condition is FALSE there (`nh`, `nhe` nested) or its member was omitted from the scope
+    # (`nomit`, a TRUE guard).
+    test-condition-false-reach-names-the-undecided-door = {
+      expr = fx.mW "nh";
+      expectedError.msg = exactly (undecided "nh" "hm" null);
+    };
+    test-condition-false-nested-reach-names-the-undecided-door = {
+      expr = fx.mW "nhe";
+      expectedError.msg = exactly (undecided "nhe" "hm" (fx.iidOf "nhe" "eu"));
+    };
+    test-omitted-member-names-the-undecided-door = {
+      expr = fx.mW "nomit";
+      expectedError.msg = exactly (undecided "nomit" "p" null);
     };
     # K1's boundary: a carrier (`s`, split) admits every tuple, so no listed instance in a handed
     # scope is never a FALSE condition; it refuses.

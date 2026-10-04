@@ -73,7 +73,8 @@ let
             }
           ];
         };
-        # The condition-FALSE reach (K1): `hm` reached directly, and nested inside `eu`.
+        # The empty reach in a handed scope (K1, interim refusal): `hm` reached directly, and nested
+        # inside `eu`.
         hm = guard (pred.has "user") (marked "hm" // { description = "hm"; });
         home = marked "home" // {
           includes = [ "hm" ];
@@ -104,6 +105,9 @@ let
         nh.aspects = [ "home" ];
         nhu.aspects = [ "home" ];
         nhe.aspects = [ "eu" ];
+        # A TRUE guard whose member the handed scope omits (`nomit`), beside the same scope with it.
+        nomit.aspects = [ "p" ];
+        nhanded.aspects = [ "p" ];
       };
     }
   ];
@@ -152,6 +156,12 @@ let
         };
         nhe = host "nh" // {
           members = [ "eu" ];
+        };
+        nomit = host "nh" // {
+          members = [ ];
+        };
+        nhanded = host "nh" // {
+          members = [ "p" ];
         };
       };
 

@@ -179,6 +179,14 @@ let
     + "declare it as a named aspect and include it by key";
   # A reached parametric node is delivered through its instances (ADR-0010 section 4(a)). Where the
   # relation was not handed the reaching scope, or the node is a carrier, an empty reach refuses.
+  # INTERIM (den-hoag-n8wb5): a first-order guard with no listed instance in a handed scope refuses as
+  # undecided, until the relation publishes whether the guard was declined.
+  undecidedReachRefusal =
+    node: id: inst:
+    "gen-delivery: project: node '${node}' reaches parametric aspect '${id}'"
+    + (if inst == null then "" else " inside instance '${inst}'")
+    + ", and the instance relation lists no instance of it there; the relation does not publish whether "
+    + "the guard was declined, so the reach is undecided and refuses (interim, until den-hoag-n8wb5)";
   noInstanceRefusal =
     node: id: inst:
     "gen-delivery: project: node '${node}' reaches parametric aspect '${id}'"
@@ -250,19 +258,21 @@ let
   # is a well-formedness check that the producer's grouping agrees with the `I` edge; it is not a
   # member resolution. A static node is always walked at node scope, wherever it is reached.
   #
-  # THE EMPTY REACH, and where the boundary falls. The producer walks every scope it is handed and
-  # mints wherever the guard admits a tuple, so its relation holds an entry for every handed scope
-  # (`reaches.<node>`, `nested.<iid>`). Inside such an entry, a FIRST-ORDER guard listing no instance
-  # is one whose condition is FALSE at every tuple: no edge, delivering nothing (ADR-0019, "an
-  # includeIf that resolves off is indistinguishable from an edge that never existed"). A scope the
-  # relation holds no entry for was never handed, and a carrier admits every tuple, so for either an
-  # empty reach is undecided and refuses by name. `project` evaluates no condition: it reads which
-  # scopes the producer decided.
+  # THE EMPTY REACH REFUSES (INTERIM, den-hoag-n8wb5). A reach that lists no instance refuses by
+  # name, wherever it is. ADR-0019's "an includeIf that resolves off is indistinguishable from an edge
+  # that never existed" covers a reach whose falseness is DECIDED, and absence does not decide it: an
+  # empty pair in a handed scope is the producer declining the guard OR never walking it (a scope
+  # handed without that member, or over other sources or another tree), and the relation does not
+  # publish which. Delivering nothing there turns an honest caller's mis-handed relation into a TRUE
+  # guard silently dropped. The deliver-nothing arm is banked for the owner; den-hoag-n8wb5 carries
+  # the flip, once gen-aspects publishes the declined set: deliver nothing iff the id is declared
+  # declined. A scope with no entry, and a guard carrier (it admits every tuple), refuse by the
+  # no-instance door; an empty pair in a handed scope refuses as undecided. `project` evaluates no
+  # condition.
   #
-  # THE CALLER'S OBLIGATION. The relation must be minted over the same `values.aspects`, `cnf` and
-  # node members `project` reads. An instance id names its declaration and formals, never class
-  # content, so a relation minted over another tree delivers that tree's content undetected, and a
-  # scope handed fewer members reads their parametric reach as FALSE.
+  # THE CALLER'S OBLIGATION. The relation must be minted over the same `values.aspects` and `cnf`
+  # `project` reads. An instance id names its declaration and formals, never class content, so a
+  # relation minted over another tree delivers that tree's content undetected.
   #
   # A node's walk key is its id. An inline site's is `[ hostId ] ++ positionPath`, an ADDRESS into
   # the host's published declaration and never a name for the content: it is generated exactly once
@@ -296,7 +306,7 @@ let
       };
       # The instances listed at `(scope, id)`, each checked against the vertex it names and its `I`
       # edge. A first-order guard (gen-aspects' `termGuard`: it has a `condition`) with none listed in
-      # a handed scope is FALSE there and yields no item.
+      # a handed scope is undecided and refuses (interim, den-hoag-n8wb5).
       instancesAt =
         nodeName: inst: id:
         let
@@ -311,7 +321,7 @@ let
           throw (edgeListNotListRefusal scope id ids)
         else if ids == null || ids == [ ] then
           if edges != null && facts.nodeData.${id} ? condition then
-            [ ]
+            throw (undecidedReachRefusal nodeName id inst)
           else
             throw (noInstanceRefusal nodeName id inst)
         else
@@ -337,7 +347,7 @@ let
               }
           ) ids;
       # Every reach of a node routes here: a static node is an item at node scope, a parametric one
-      # is its instances at the reaching scope, or nothing, or a refusal.
+      # is its instances at the reaching scope, or a refusal.
       reach =
         nodeName: inst: id:
         if aspects.isGuardLeaf facts.nodeData.${id} then

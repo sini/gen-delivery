@@ -69,18 +69,20 @@ members, in declared order:
   `nested.<instance>.<aspect>` lists. Each instance delivers its vertex's `entry`, and its includes are
   followed the same way. A static aspect is always walked at node scope, wherever it is reached.
   `project` reads the relation and never mints an instance;
-- where the relation lists no instance: in a scope it was handed (`reaches.<node>` or
-  `nested.<instance>` present), a first-order guard there has a FALSE condition at every tuple, so it
-  is no edge and delivers nothing. A scope it was never handed (no `instances`, or a node missing from
-  `reaches`), or a guard carrier, refuses by name;
+- where the relation lists no instance, the reach **refuses by name**: a scope it was never handed
+  (no `instances`, or a node missing from `reaches`) and a guard carrier by the no-instance door; a
+  first-order guard in a handed scope as **undecided**. That last refusal is interim
+  (den-hoag-n8wb5): the relation does not publish whether the producer declined the guard (its
+  condition FALSE) or never walked it (a member omitted from the scope, other sources, another
+  tree), and delivering nothing would silently drop a TRUE guard in the second case. Once
+  gen-aspects publishes the declined set, a declined guard delivers nothing (ADR-0019);
 - **parametric content with no declaration** (a guard written at an include position, or a named
   guard included by value) is refused by name: the relation can hold no instance of it. A
   `{ host, ... }:` include is refused upstream by gen-aspects.
 
-**The caller's obligation.** `instances` must be minted over the same `values.aspects`, `cnf` and
-node members `project` reads. An instance id names its declaration and formals, never its class
-content, so a relation minted over another tree delivers that tree's content at rc 0, and a scope
-handed fewer members reads their parametric reach as FALSE. Every `project` call carrying `instances`
+**The caller's obligation.** `instances` must be minted over the same `values.aspects` and `cnf`
+`project` reads. An instance id names its declaration and formals, never its class content, so a
+relation minted over another tree delivers that tree's content at rc 0. Every `project` call carrying `instances`
 forces the whole relation at its root, a `bindings` read included.
 
 `instances` refuses by name when it is not the four-field record `{ vertices; instantiates; reaches; nested; }` of attrsets, and where the walk reads it: an edge set or edge list of the wrong

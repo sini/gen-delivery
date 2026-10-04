@@ -581,23 +581,27 @@ in
         closureRefuses = true;
       };
     };
-    # K1 (orchestrator ruling, defaulted, reversible): a guard reached in a HANDED scope where its
-    # condition is FALSE is no edge and delivers nothing. `nh` has no users and reaches `has user`
-    # `hm` directly; `nhe` reaches it nested in `eu`, whose tuple has no user. `nhu`, with a user
-    # descendant, is the condition-TRUE control.
-    test-condition-false-reach-delivers-nothing = {
+    # K1 (interim, den-hoag-n8wb5): an empty reach in a HANDED scope refuses as undecided, since the
+    # relation does not publish whether the guard was declined. `nh` (no users) reaches `has user`
+    # `hm` directly, `nhe` nested in `eu`; `nomit` reaches TRUE `p`, a member its handed scope omits.
+    # Controls: `nhu`, with a user descendant, and `nhanded`, with `p` handed, deliver.
+    test-empty-reach-in-a-handed-scope-refuses = {
       expr = {
-        direct = fx.mW "nh";
-        nested = fx.mW "nhe";
+        direct = refuses (fx.mW "nh");
+        nested = refuses (fx.mW "nhe");
+        omittedMember = refuses (fx.mW "nomit");
         conditionTrue = fx.mW "nhu";
+        memberHanded = fx.mW "nhanded";
       };
       expected = {
-        direct = [ "home" ];
-        nested = [ "eu" ];
+        direct = true;
+        nested = true;
+        omittedMember = true;
         conditionTrue = [
           "home"
           "hm"
         ];
+        memberHanded = [ "p" ];
       };
     };
     # den-hoag-ehkse, held visible until it lands: two guards with one condition and one non-class
