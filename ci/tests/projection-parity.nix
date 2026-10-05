@@ -74,10 +74,11 @@ in
     };
     # S4: the parametric fixture under both worlds is byte-identical to the walk-only projection
     # (gen-delivery a89dda5, the stage-B view). RED: an over-listed `reaches.na` (S3) reads
-    # `5d8fc74d…`.
+    # `5d8fc74d…`. Re-pinned for den-hoag-8g2rn's one containment (`791de44e…` before): every node's
+    # output is unchanged except `nhu`'s `hm` id, now minted over its own host's user u3.
     test-projection-equals-the-walk-only-projection = {
       expr = builtins.hashString "sha256" (builtins.toJSON (outputOf (fxWith scope)));
-      expected = "791de44e7dcd021f2a63cd360dc931dca6721c764e4f065153349ce0b26f5944";
+      expected = "bb649ac7db1d7087a3229e52f44e3d413616d1d9e5800e476e731f5170301a16";
     };
   };
 }

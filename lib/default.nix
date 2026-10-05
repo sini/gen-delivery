@@ -219,7 +219,7 @@ let
   vertexNotRecordRefusal =
     iid:
     "gen-delivery: project: the instance relation's vertex '${iid}' is not an attrset carrying an attrset `entry`";
-  instancesShapeRefusal = "gen-delivery: project: instances must be gen-aspects' instance relation { vertices; instantiates; reaches; nested; declined = { reaches; nested; }; }, each an attrset";
+  instancesShapeRefusal = "gen-delivery: project: instances must be gen-aspects' instance relation { vertices; instantiates; reaches; nestedAt; declined = { reaches; nestedAt; }; }, each an attrset";
   declinedNotListRefusal =
     scope: v:
     "gen-delivery: project: the instance relation's declined aspects at '${scope}' must be a list of aspect ids, got ${builtins.typeOf v}";
@@ -292,13 +292,15 @@ let
   # holds, so a static walk through it would deliver them unconditionally. Where it is reached it is
   # replaced by the instances the caller's materialised relation (`instances`, gen-aspects'
   # `instancesFor`) lists at the reaching scope: `reaches.<node>.<id>` for the projected node,
-  # `nested.<iid>.<id>` inside an instance. An instance item delivers the vertex's `entry` (σ applied
+  # `nestedAt.<node>.<iid>.<id>` inside an instance read at that node (den-hoag-8g2rn: a nested
+  # include fans out at the meet of its vertex and the reading node, so its edges are per node). An instance item delivers the vertex's `entry` (σ applied
   # per field by the producer) and follows that entry's own `includes`. `instantiates.<iid> == [ id ]`
   # is a well-formedness check that the producer's grouping agrees with the `I` edge; it is not a
   # member resolution. A static node is always walked at node scope, wherever it is reached.
   #
   # THE EMPTY REACH, THREE ARMS (den-hoag-n8wb5). The relation publishes beside its edges the walked
-  # guards whose condition was decided FALSE (`declined.reaches.<node>`, `declined.nested.<iid>`). A
+  # guards whose condition was decided FALSE (`declined.reaches.<node>`,
+  # `declined.nestedAt.<node>.<iid>`). A
   # reach that lists no instance, in a scope whose edge entry is present:
   #   1. the id is declined there: NO ITEMS. ADR-0019: an includeIf that resolves off is
   #      indistinguishable from an edge that never existed;
@@ -307,17 +309,18 @@ let
   #      member, or a relation over another tree), or the evaluator refused its condition (R: `has`
   #      over a coordinate the scope lacks under the open world, quf7g OQ1);
   #   3. otherwise, and wherever the scope's entry is absent (no `instances`, a node missing from
-  #      `reaches`, an instance missing from `nested`) or the id is a guard carrier (it admits every
+  #      `reaches`, an instance missing from the node's `nestedAt`) or the id is a guard carrier (it admits every
   #      tuple): the no-instance door.
   # `declined` selects between "no items" and "refuse" and nothing else: it is never folded, counted
   # or ordered, so `project`'s output stays a function of the reached declarations. `project`
   # evaluates no condition.
   #
   # THE CALLER'S OBLIGATION. The relation must be minted over the same `values.aspects` and `cnf`,
-  # the same members, and the same sources and descendants that `project`'s nodes stand for. `project`
+  # the same members, the same sources, and the same `containment` (one-step, with its argument
+  # bindings) that `project`'s nodes stand for. `project`
   # detects a member the scope omitted and an id the relation's tree never walked (both arm 2), and an
   # edge `reaches.<node>` lists for an aspect the node's include sites never reach (the parity door). It
-  # cannot detect (i) a wrong source or descendant, since it never sees sources: a FALSE there is
+  # cannot detect (i) a wrong source or containment record, since it never sees either: a FALSE there is
   # genuine for what was handed; (ii) a relation over another tree that walks the same id and decides
   # it FALSE; (iii) for a TRUE reach, a relation over another tree, which delivers that tree's content.
   # An instance id names its declaration and formals, never class content. Under a declared
@@ -357,18 +360,20 @@ let
       # edge. An empty reach takes THE EMPTY REACH's three arms: declined (in a present edge entry)
       # delivers nothing, a first-order guard (gen-aspects' `termGuard`: it has a `condition`) in a
       # present entry refuses as undecided, and anything else by the no-instance door.
+      # The nested edges a node reads are the relation's edges AT that node (gen-aspects `nestedAt`,
+      # den-hoag-8g2rn S3c: a nested include fans out at the meet of its vertex and the reading node).
+      nestedOf = nodeName: v: instances.nestedAt.${nodeName}.${v} or null;
       instancesAt =
         nodeName: inst: id:
         let
           scope = if inst == null then nodeName else inst;
-          edges =
-            if inst == null then instances.reaches.${nodeName} or null else instances.nested.${inst} or null;
+          edges = if inst == null then instances.reaches.${nodeName} or null else nestedOf nodeName inst;
           ids = if edges == null then null else edges.${id} or null;
           declined =
             if inst == null then
               instances.declined.reaches.${nodeName} or [ ]
             else
-              instances.declined.nested.${inst} or [ ];
+              instances.declined.nestedAt.${nodeName}.${inst} or [ ];
         in
         if edges != null && !builtins.isAttrs edges then
           throw (edgesNotAttrsRefusal scope edges)
@@ -454,12 +459,14 @@ let
       # membership and order over the materialised projection, and the query's answer set must equal
       # the walk's vertex set or the node refuses (THE PROJECTION-PARITY DOOR, below).
       # Vertices: each receiver (keyed `toJSON [ <node> ]`, a key space no hash identity enters),
-      # each facts node, each instance vertex. Edges, every one a fact of an earlier stratum:
+      # each facts node, each instance OCCURRENCE (keyed `toJSON [ <node> <iid> ]`, one per node that
+      # reaches the instance). Edges, every one a fact of an earlier stratum:
       #   members  receiver → each member's facts id
-      #   reaches  receiver → every instance the relation lists at its scope (`reaches.<node>`)
-      #   includes facts node or instance → each local target at its sites, through inline content
+      #   reaches  receiver → the occurrence of every instance the relation lists at its scope
+      #   includes facts node or occurrence → each local target at its sites, through inline content
       #            (static targets; at a facts node also the guard declarations reached at node scope)
-      #   nested   instance → the instances the relation lists inside it (`nested.<iid>`)
+      #   nested   occurrence → the occurrences, at its node, of the instances the relation lists
+      #            inside it (`nestedAt.<node>.<iid>`)
       # Edges are total over malformed relation shapes: the named doors fire in the ordered fold.
       rid = n: builtins.toJSON [ n ];
       isVertex = v: builtins.isString v && instances.vertices ? ${v};
@@ -485,6 +492,39 @@ let
       entryOf = v: instances.vertices.${v}.entry or { };
       instTargets =
         v: if builtins.isAttrs (entryOf v) then localTargets (sitesOfEntry (entryOf v)) else [ ];
+      # ONE shared lift: an instance vertex is lifted once per node that reaches it, as an OCCURRENCE
+      # `[ node iid ]`, so the per-node nested edges are edges of one receiver-independent graph and
+      # the lift is linear in the occurrences (den-hoag-8g2rn).
+      occ =
+        n: iid:
+        builtins.toJSON [
+          n
+          iid
+        ];
+      # Every instance an edge at n names, so an edge always lands on a vertex and a relation listing
+      # an instance with no `nestedAt.<n>` entry meets the named doors, never the query's.
+      occs = builtins.listToAttrs (
+        builtins.concatMap (
+          n:
+          let
+            at = instances.nestedAt.${n} or { };
+            inner = if builtins.isAttrs at then at else { };
+          in
+          map
+            (iid: {
+              name = occ n iid;
+              value = {
+                node = n;
+                inherit iid;
+              };
+            })
+            (
+              builtins.filter isVertex (builtins.attrNames inner)
+              ++ listed (instances.reaches.${n} or null)
+              ++ builtins.concatMap (i: listed inner.${i}) (builtins.attrNames inner)
+            )
+        ) (builtins.attrNames nodes)
+      );
       lifted =
         scope.eval
           {
@@ -500,23 +540,30 @@ let
               else
                 [ ];
             edges-reaches =
-              _: v: if receivers ? ${v} then listed (instances.reaches.${receivers.${v}} or null) else [ ];
+              _: v:
+              if receivers ? ${v} then
+                map (occ receivers.${v}) (listed (instances.reaches.${receivers.${v}} or null))
+              else
+                [ ];
             edges-includes =
               _: v:
               if facts.nodeData ? ${v} then
                 (if aspects.isGuardLeaf facts.nodeData.${v} then [ ] else localTargets facts.includeSitesOf.${v})
-              else if isVertex v then
-                builtins.filter (t: !(aspects.isGuardLeaf facts.nodeData.${t})) (instTargets v)
+              else if occs ? ${v} then
+                builtins.filter (t: !(aspects.isGuardLeaf facts.nodeData.${t})) (instTargets occs.${v}.iid)
               else
                 [ ];
-            edges-nested = _: v: if isVertex v then listed (instances.nested.${v} or null) else [ ];
+            edges-nested =
+              _: v:
+              if occs ? ${v} then
+                map (occ occs.${v}.node) (listed (nestedOf occs.${v}.node occs.${v}.iid))
+              else
+                [ ];
           }
           (
             scope.buildRoots {
               parentGraph = scope.vertices (
-                builtins.attrNames receivers
-                ++ builtins.attrNames facts.nodeData
-                ++ builtins.attrNames instances.vertices
+                builtins.attrNames receivers ++ builtins.attrNames facts.nodeData ++ builtins.attrNames occs
               );
             }
           );
@@ -542,7 +589,7 @@ let
         builtins.listToAttrs (
           map
             (a: {
-              name = a.node;
+              name = occs.${a.node}.iid or a.node;
               value = null;
             })
             (scope.resolve {
@@ -746,10 +793,10 @@ let
               vertices = { };
               instantiates = { };
               reaches = { };
-              nested = { };
+              nestedAt = { };
               declined = {
                 reaches = { };
-                nested = { };
+                nestedAt = { };
               };
             };
         in
@@ -759,14 +806,14 @@ let
             builtins.attrNames v == [
               "declined"
               "instantiates"
-              "nested"
+              "nestedAt"
               "reaches"
               "vertices"
             ]
           && builtins.all builtins.isAttrs (builtins.attrValues v)
           &&
             builtins.attrNames v.declined == [
-              "nested"
+              "nestedAt"
               "reaches"
             ]
           && builtins.all builtins.isAttrs (builtins.attrValues v.declined)

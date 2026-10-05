@@ -66,8 +66,9 @@ members, in declared order:
 - a reference into a tree this one does not hold is **refused by name** (federate the trees first);
 - a **parametric aspect** (a guard, or an aspect folded into a guard carrier) is delivered through
   its **instances**, read from `instances`, gen-aspects' instance relation (`instancesFor`): at the
-  node, the instances `reaches.<node>.<aspect>` lists; inside an instance, those its
-  `nested.<instance>.<aspect>` lists. Each instance delivers its vertex's `entry`, and its includes are
+  node, the instances `reaches.<node>.<aspect>` lists; inside an instance, those the relation lists
+  for it AT THAT NODE, `nestedAt.<node>.<instance>.<aspect>` (a nested include fans out at the meet
+  of its vertex and the reading node, so one shared vertex has nested edges per node). Each instance delivers its vertex's `entry`, and its includes are
   followed the same way. A static aspect is always walked at node scope, wherever it is reached.
   `project` reads the relation and never mints an instance;
 - where the relation lists no instance, the reach reads the relation's **decision**, `declined`: a
@@ -86,15 +87,16 @@ members, in declared order:
   `{ host, ... }:` include is refused upstream by gen-aspects.
 
 **The caller's obligation.** `instances` must be minted over the same `values.aspects` and `cnf`,
-the same members, and the same sources and descendants that `project`'s nodes stand for. `project`
+the same members, the same sources and the same `containment` (the entity graph's one-step
+containment, with each entity's argument bindings) that `project`'s nodes stand for. `project`
 detects a member a scope omitted and an id the relation's tree never walked, both by the undecided
 door, and an instance `reaches.<node>` lists that the node's include sites never reach, by the
-projection-parity door below. It cannot detect a wrong source or descendant (it never sees sources), nor a relation over
+projection-parity door below. It cannot detect a wrong source or containment record (it never sees either), nor a relation over
 another tree that walks the same id: one that decides it FALSE delivers nothing, and one that lists
 an instance delivers that tree's content, both at rc 0. Every `project` call carrying `instances`
 forces the whole relation at its root, a `bindings` read included.
 
-`instances` refuses by name when it is not the five-field record `{ vertices; instantiates; reaches; nested; declined = { reaches; nested; }; }` of attrsets (a four-field relation from an older gen-aspects is refused, never read as nothing declined), and where the walk reads it: an edge set, edge list or declined list of the wrong
+`instances` refuses by name when it is not the five-field record `{ vertices; instantiates; reaches; nestedAt; declined = { reaches; nestedAt; }; }` of attrsets (a relation from an older gen-aspects, `nested` keyed by vertex alone, is refused, never read as nothing declined), and where the walk reads it: an edge set, edge list or declined list of the wrong
 type, an id that is not a string, an id with no vertex, a vertex without an attrset `entry`, and an
 instance listed under an aspect its `instantiates` edge does not name.
 
@@ -102,7 +104,8 @@ instance listed under an aspect its `instantiates` edge does not name.
 order over the instance relation, the materialised projection gen-aspects publishes. Beside it,
 `project` runs a receiver-rooted query through the one resolution calculus, gen-scope's `resolve`
 with `(members | reaches) (includes | nested)*` in mode `reachable`, over one graph lifted per call
-from `graphFacts` and the instance relation. The query's answers are read as a set, so their order
+from `graphFacts` and the instance relation, in which an instance is lifted once per node that reaches it
+(an occurrence `[ node iid ]`), so the lift is linear and its `nested` edges are the node's. The query's answers are read as a set, so their order
 never reaches the output, and that set must equal the walk's delivered vertices or the node
 **refuses by name** (the projection-parity door): either the relation lists an instance the node's
 include sites never reach (minted over other members or another tree), or the walk delivers a
@@ -126,11 +129,11 @@ relation *node delivers element*, where an element is a named aspect or an insta
 so they cannot disagree; one instance that two nodes reach is one id in both nodes' lists, which is
 how shared evaluation is observed. `realize` reads only `classes`.
 
-**Fan-out siblings** are delivered in the relation's edge order, which gen-aspects lists in the
-scope's declared `descendants` order, never by instance id. A terminal's list merge reverses module
-order, so a list option realizes the siblings in that order **reversed**, as it does a node's
-members. The order is the caller's: that `descendants` is a declared order invariant under
-presentation is owed by whoever builds the scopes, not discharged here.
+**Fan-out siblings** are delivered in the relation's edge order, which gen-aspects derives from
+`containment`: the descendants' identifiers in canonical order (ruling 13), never by identity or
+instance id, so the order is invariant under presentation by construction. A terminal's list merge
+reverses module order, so a list option realizes the siblings in that order **reversed**, as it does
+a node's members.
 
 A member is an aspect **identifier** (its key), resolved through `graphFacts`' `nodeIdOf`; a member
 naming no aspect, or written as a declaration value, is refused by name. Every refusal fires only

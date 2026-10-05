@@ -115,7 +115,7 @@ let
     + "closure arrived here unlowered, and no first-order route reaches it there. A closure that reads none "
     + "of the module function's arguments can be written beside the function instead of inside it.";
 
-  instancesShape = "gen-delivery: project: instances must be gen-aspects' instance relation { vertices; instantiates; reaches; nested; declined = { reaches; nested; }; }, each an attrset";
+  instancesShape = "gen-delivery: project: instances must be gen-aspects' instance relation { vertices; instantiates; reaches; nestedAt; declined = { reaches; nestedAt; }; }, each an attrset";
   memberUnknown = "gen-delivery: project: node 'server' names aspect 'ghost' as a member, and no aspect has that key";
   memberNotIdentifier =
     "gen-delivery: project: node 'server' lists a member that is not an aspect identifier (a set); "
@@ -508,7 +508,7 @@ in
               (fx.factIdOf "ha")
             ]
             ++ atNa
-            ++ builtins.concatMap (i: listedIn (fx.rel.nested.${i} or { })) atNa
+            ++ builtins.concatMap (i: listedIn (fx.rel.nestedAt.na.${i} or { })) atNa
           )) false
         );
     };
@@ -519,7 +519,7 @@ in
       expr = overlisted;
       expectedError.msg = exactly (
         parity "na" (least (
-          [ eiAtNei ] ++ builtins.concatLists (builtins.attrValues fx.rel.nested.${eiAtNei})
+          [ eiAtNei ] ++ builtins.concatLists (builtins.attrValues (fx.rel.nestedAt.na.${eiAtNei} or { }))
         )) true
       );
     };
@@ -551,15 +551,23 @@ in
       expr = fx.mCw "nomit";
       expectedError.msg = exactly (undecided "nomit" "p" null);
     };
-    # Arm 1 needs the scope's edge entry: an instance with no `nested` entry meets the no-instance
-    # door even where `declined.nested` lists the id (a hand-built or sliced relation).
+    # Arm 1 needs the scope's edge entry: an instance with no `nestedAt.<node>` entry meets the
+    # no-instance door even where `declined.nestedAt.<node>` lists the id (a hand-built or sliced
+    # relation).
     # RED (arm 1 read before the entry check): `nhe` delivers `[ eu ]`.
     test-declined-without-an-edge-entry-names-the-no-instance-door =
       let
         eu = builtins.head fx.relCw.reaches.nhe.eu;
       in
       {
-        expr = fx.withViewCw (fx.relCw // { nested = removeAttrs fx.relCw.nested [ eu ]; }) "nhe";
+        expr = fx.withViewCw (
+          fx.relCw
+          // {
+            nestedAt = fx.relCw.nestedAt // {
+              nhe = removeAttrs fx.relCw.nestedAt.nhe [ eu ];
+            };
+          }
+        ) "nhe";
         expectedError.msg = exactly (noInstance "nhe" "hm" eu);
       };
     test-declined-not-a-list-names-the-door = {
@@ -587,7 +595,14 @@ in
     };
     # W4 (htfv3 I9): `e@nb`'s nested entry is absent, so its `q` is undecided there.
     test-instance-without-a-nested-entry-names-the-instance-scope-door = {
-      expr = fx.withView (fx.rel // { nested = { }; }) "nb";
+      expr = fx.withView (
+        fx.rel
+        // {
+          nestedAt = fx.rel.nestedAt // {
+            nb = { };
+          };
+        }
+      ) "nb";
       expectedError.msg = exactly (noInstance "nb" "q" (fx.iidOf "nb" "e"));
     };
     # W8a: the edge names an instance the relation holds no vertex for.
