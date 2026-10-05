@@ -21,8 +21,8 @@ let
 
   valuesOf =
     mods:
-    (genMerge.evalModuleTree {
-      modules = [
+    (genMerge.evalModuleTree { } (
+      [
         ((aspects.mkAspectSchema cnf).mkAspectModule { })
         {
           options.hosts = genMerge.mkOption {
@@ -31,8 +31,8 @@ let
           };
         }
       ]
-      ++ mods;
-    }).config;
+      ++ mods
+    )).config;
   values = valuesOf [
     {
       aspects = {
@@ -139,9 +139,8 @@ let
   abc = builtins.intersectAttrs dc values.hosts;
   marksOf =
     mods:
-    (genMerge.evalModuleTree {
-      modules = [ { freeformType = t.lazyAttrsOf t.anything; } ] ++ mods;
-    }).config.marks;
+    (genMerge.evalModuleTree { } ([ { freeformType = t.lazyAttrsOf t.anything; } ] ++ mods))
+    .config.marks;
   shared = projectOf values rel abc;
 
   # Views the cells read beside the relation, each a defect a producer could ship.
