@@ -566,10 +566,11 @@ in
       expected = true;
     };
     # W7 (htfv3 I8, delivery half): `fan` admits only the two user descendants, and both siblings are
-    # delivered, in the producer's edge order: the scope's `descendants` as declared (gen-aspects
-    # `instancesFor`). The realized list is that order REVERSED by the list merge, so `nf`'s
-    # `[ u1 u2 ]` reads `[ uB uA ]`, and `nfr`'s `[ u2 u1 ]` reads `[ uA uB ]`. RED (ascending or
-    # descending instance id): both arms read one list.
+    # delivered, in the producer's edge order: the descendants' IDENTIFIER order, canonical (gen-aspects
+    # `instancesFor`, ruling 13). The realized list is that order REVERSED by the list merge, so `nf`'s
+    # `[ u1 u2 ]` (uA, uB) reads `[ uB uA ]`, and `nfr`'s `[ w1 w2 ]`, the same values under
+    # identifiers in the other order, reads `[ uA uB ]`. RED (siblings by identity, `seed-idorder`; or
+    # by instance id, `seed-iid`): the two arms do not flip.
     test-fan-out-delivers-every-sibling = {
       expr = {
         declared = fx.mW "nf";

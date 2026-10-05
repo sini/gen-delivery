@@ -95,6 +95,19 @@ let
     ${src "p2"}.pin = "p2";
     ${src "u1"}.user = "uA";
     ${src "u2"}.user = "uB";
+    ${src "f"}.host = "hf";
+  };
+  # The entity graph's one-step containment (den-hoag-8g2rn): host f contains the users `fan` fans over.
+  rec0 = parent: key: x: {
+    inherit parent key;
+    identity = src x;
+    marked = false;
+    bindings = { };
+  };
+  containment = {
+    f = rec0 null "host" "f";
+    u1 = rec0 "f" "user" "u1";
+    u2 = rec0 "f" "user" "u2";
   };
   ent = n: pin: {
     members = values.hosts.${n}.aspects;
@@ -109,17 +122,13 @@ let
     c = ent "c" "p2";
     f = {
       members = [ "fan" ];
-      sources = { };
-      descendants = [
-        { sources.user = src "u1"; }
-        { sources.user = src "u2"; }
-      ];
+      sources.host = src "f";
     };
   };
   relOf =
     v: sc:
     aspects.instancesFor cnf v.aspects {
-      inherit suppliers;
+      inherit suppliers containment;
       scopes = sc;
     };
   rel = relOf values scopes;

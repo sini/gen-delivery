@@ -119,9 +119,29 @@ let
   src = n: "entity:${builtins.hashString "sha256" n}";
   host = n: { sources.host = src n; };
   relationOf =
-    values: suppliers: scopes:
-    aspects.instancesFor cnf values.aspects { inherit suppliers scopes; };
-  rel = relationOf values relInput.suppliers relInput.scopes;
+    values: suppliers: containment: scopes:
+    aspects.instancesFor cnf values.aspects { inherit suppliers scopes containment; };
+  # The entity graph's one-step containment (den-hoag-8g2rn). `fan` fans over a host's users in the
+  # users' IDENTIFIER order: nfH holds u1 (uA) and u2 (uB); nfrH holds the same values under
+  # identifiers in the other order, w1 (uB) and w2 (uA), the renamed arm (W7). nhuH holds the one
+  # user `nhu` reaches.
+  rec0 = parent: key: x: {
+    inherit parent key;
+    identity = src x;
+    marked = false;
+    bindings = { };
+  };
+  containment = {
+    nfH = rec0 null "host" "nfH";
+    u1 = rec0 "nfH" "user" "u1";
+    u2 = rec0 "nfH" "user" "u2";
+    nfrH = rec0 null "host" "nfrH";
+    w1 = rec0 "nfrH" "user" "u2r";
+    w2 = rec0 "nfrH" "user" "u1r";
+    nhuH = rec0 null "host" "nhuH";
+    u3 = rec0 "nhuH" "user" "u3";
+  };
+  rel = relationOf values relInput.suppliers containment relInput.scopes;
   relInput = {
     suppliers = {
       ${src "na"}.host = "ha";
@@ -130,6 +150,12 @@ let
       ${src "nh"}.host = "ha";
       ${src "u1"}.user = "uA";
       ${src "u2"}.user = "uB";
+      ${src "u1r"}.user = "uA";
+      ${src "u2r"}.user = "uB";
+      ${src "u3"}.user = "uA";
+      ${src "nfH"}.host = "hf";
+      ${src "nfrH"}.host = "hf";
+      ${src "nhuH"}.host = "ha";
     };
     scopes = {
       na = host "na" // {
@@ -138,22 +164,12 @@ let
       nb = host "nb" // {
         members = values.hosts.nb.aspects;
       };
-      nf = {
+      nf = host "nfH" // {
         members = [ "fan" ];
-        sources = { };
-        descendants = [
-          { sources.user = src "u1"; }
-          { sources.user = src "u2"; }
-        ];
       };
-      # `nf`'s descendants reversed (W7's second arm).
-      nfr = {
+      # `nf`'s values under identifiers in the other order (W7's renamed arm).
+      nfr = host "nfrH" // {
         members = [ "fan" ];
-        sources = { };
-        descendants = [
-          { sources.user = src "u2"; }
-          { sources.user = src "u1"; }
-        ];
       };
       nei = host "nei" // {
         members = [ "ei" ];
@@ -162,9 +178,8 @@ let
       nh = host "nh" // {
         members = [ "home" ];
       };
-      nhu = host "nh" // {
+      nhu = host "nhuH" // {
         members = [ "home" ];
-        descendants = [ { sources.user = src "u1"; } ];
       };
       nhe = host "nh" // {
         members = [ "eu" ];
@@ -189,7 +204,10 @@ let
   };
   # A guard is checked and fired under ONE declared set, so the closed world places its own tree.
   valuesCw = valuesWith cnfCw mods;
-  relCw = aspects.instancesFor cnfCw valuesCw.aspects { inherit (relInput) suppliers scopes; };
+  relCw = aspects.instancesFor cnfCw valuesCw.aspects {
+    inherit (relInput) suppliers scopes;
+    inherit containment;
+  };
   # ADR-0019's equivalence: the same closed-world tree with `home`'s include of `hm` removed, so `nh`
   # projects there what an include that never existed delivers.
   valuesCwNoHm = valuesWith cnfCw (
@@ -210,6 +228,7 @@ let
     cnf = cnfCw;
     instances = aspects.instancesFor cnfCw valuesCwNoHm.aspects {
       inherit (relInput) suppliers scopes;
+      inherit containment;
     };
   };
   withViewCw =
@@ -257,7 +276,7 @@ let
           ];
         }
       ];
-      r = relationOf v { ${src "n"}.host = "n"; } {
+      r = relationOf v { ${src "n"}.host = "n"; } { } {
         n = host "n" // {
           members = [
             "x"
