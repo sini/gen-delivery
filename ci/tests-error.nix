@@ -129,6 +129,14 @@ let
     + "neither a reference to an aspect nor inline aspect content: a guard there is not a declared "
     + "aspect, so the instance relation can hold no instance of it (declare it as a named aspect and "
     + "include it by key), and any other value (a list, a number) is not an aspect";
+  # Inside an anonymous declaration: the refusal names its node, then the aspect it was written in,
+  # with the position path from that aspect (den-hoag-8hlo3).
+  sealedInlineInclude =
+    id: position:
+    "gen-delivery: project: aspect '${id}', inline content of aspect 'a', carries at include position ${position} an element that is "
+    + "neither a reference to an aspect nor inline aspect content: a guard there is not a declared "
+    + "aspect, so the instance relation can hold no instance of it (declare it as a named aspect and "
+    + "include it by key), and any other value (a list, a number) is not an aspect";
   noInstance =
     node: a: inst:
     "gen-delivery: project: node '${node}' reaches parametric aspect '${a}'"
@@ -434,6 +442,8 @@ in
         upstreamClosureRefusal "a.includes.[definition 1-entry 1].includes.[definition 1-entry 2]"
       );
     };
+    # Inside inline content, the refusal names the anonymous node and then the aspect it was written
+    # in, and the position is still the path from that aspect.
     test-nested-sealed-guard-include-names-the-position-path = {
       expr =
         closureClasses
@@ -451,7 +461,9 @@ in
               ];
             }
           ];
-      expectedError.msg = exactly (sealedInclude "0.1");
+      expectedError.msg = exactly (
+        sealedInlineInclude "a/includes/[\"a:3\",\"aspects\",\"a\",\"includes\",0]" "0.1"
+      );
     };
     test-parametric-node-names-it-and-the-interim = {
       expr =
