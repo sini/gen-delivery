@@ -589,7 +589,7 @@ in
     };
     # ── htfv3 U3: element identity beside delivered content (`elementIds`) ──
     # B1 (I2): each delivered element's id, positionally beside `classes` — a named node's facts id, an
-    # instance's vertex id, inline content `null`. S is one vertex a and b both reach, so one id; each
+    # instance's vertex id, inline content its anonymous declaration's id (den-hoag-8hlo3). S is one vertex a and b both reach, so one id; each
     # entity's E is its own. RED (an id per reaching node): S's id differs at a and b; (the view
     # `remint`, b's S under a fresh id on the same vertex): b's id differs while its marks do not, so
     # this cell alone gates it.
@@ -609,20 +609,20 @@ in
           (sx.eOf "a")
           "w"
           "ha"
-          null
+          "w/includes/[\"a:2\",\"aspects\",\"w\",\"includes\",0]"
         ];
         b = [
           sx.sA
           (sx.eOf "b")
           "w"
           "hb"
-          null
+          "w/includes/[\"a:2\",\"aspects\",\"w\",\"includes\",0]"
         ];
         c = [
           (sx.eOf "c")
           "w"
           "hc"
-          null
+          "w/includes/[\"a:2\",\"aspects\",\"w\",\"includes\",0]"
         ];
         remint = {
           id = "aspect-instance:remint-b";

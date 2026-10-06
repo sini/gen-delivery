@@ -62,7 +62,10 @@ members, in declared order:
   include cycle between named aspects terminates;
 - **inline content** written at an include position (an aspect literal, or the part gen-aspects
   coerces a split aspect's `{ config, ... }:` definition into) is delivered at its position, and
-  its own includes are followed the same way, so an aspect split across modules delivers every part;
+  its own includes are followed the same way, so an aspect split across modules delivers every part.
+  It is an **anonymous declaration**, a node of its own: gen-aspects keys static content by where it
+  was declared, and an applied body's content under its instance (`<instance>/includes/<i>`). A
+  named literal and content nested past gen-aspects' depth budget are not nodes and stay positions;
 - a reference into a tree this one does not hold is **refused by name** (federate the trees first);
 - a **parametric aspect** (a guard, or an aspect folded into a guard carrier) is delivered through
   its **instances**, read from `instances`, gen-aspects' instance relation (`instancesFor`): at the
@@ -111,8 +114,10 @@ never reaches the output, and that set must equal the walk's delivered vertices 
 include sites never reach (minted over other members or another tree), or the walk delivers a
 vertex the query never reaches. The query certifies membership; it does not decide it, and the walk
 is permanent: on a graph shared by every receiver, a node-scope instance hangs off the receiver, so
-no enumeration of answers can place it at its include site. Inline content is not a vertex; the
-walk delivers it at its position, as before.
+no enumeration of answers can place it at its include site. An anonymous declaration is a vertex
+like any node (an applied body's content one vertex shared by its instance's occurrences), so the
+door counts it; inline content that is no node is not a vertex, and the walk delivers it at its
+position.
 
 **The price, stated.** On a node that reaches a static diamond, a node-scope instance and a nested
 one, reading every node's `classes` and `elementIds` costs about twice the walk alone: 2,089 → 4,138
@@ -123,7 +128,9 @@ gen-delivery is not yet a member of the hub's perf bench, so no bench row measur
 **Element identity.** Each node entry carries `elementIds = { <delivery class> = [ <id or null> … ]; }`
 beside `classes`, with the same keys and, per class, one entry per delivered module at its position:
 what the node delivered, by identity. A named aspect's entry is its facts id, an instance's is its
-vertex id, and inline content's is `null` (its position is an address, not a name). Delivery is the
+vertex id, and inline content's is its anonymous declaration's id; it is `null` only for inline
+content that is no node (a named literal, content past the depth budget), whose position is an
+address, not a name. Delivery is the
 relation *node delivers element*, where an element is a named aspect or an instance (van Antwerpen
 2018's instantiation scopes), and `classes` and `elementIds` are its two projections over one walk,
 so they cannot disagree; one instance that two nodes reach is one id in both nodes' lists, which is

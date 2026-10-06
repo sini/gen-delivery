@@ -169,9 +169,12 @@ let
   memberUnknownRefusal =
     node: k:
     "gen-delivery: project: node '${node}' names aspect '${k}' as a member, and no aspect has that key";
+  # Inline content names its node and then the aspect it was written in (`host`); `at` is the
+  # position path from that aspect, the coordinate its author wrote.
+  inlineIn = id: host: if id == host then "" else ", inline content of aspect '${host}',";
   foreignIncludeRefusal =
-    id: at: ref:
-    "gen-delivery: project: aspect '${id}' includes at position ${at} a reference into origin "
+    id: host: at: ref:
+    "gen-delivery: project: aspect '${id}'${inlineIn id host} includes at position ${at} a reference into origin "
     + "'${prelude.concatStringsSep "/" ref.origin}', which this tree does not hold; project delivers "
     + "only what it can reach, so federate the trees first";
   # gen-aspects' `sealed` site: an include element that is neither a reference nor inline aspect
@@ -179,8 +182,8 @@ let
   # producer can mint no instance of it (identity design G5); any other value there (a list, a
   # number, as a fired term can give) is no aspect at all.
   sealedIncludeRefusal =
-    id: at:
-    "gen-delivery: project: aspect '${id}' carries at include position ${at} an element that is "
+    id: host: at:
+    "gen-delivery: project: aspect '${id}'${inlineIn id host} carries at include position ${at} an element that is "
     + "neither a reference to an aspect nor inline aspect content: a guard there is not a declared "
     + "aspect, so the instance relation can hold no instance of it (declare it as a named aspect and "
     + "include it by key), and any other value (a list, a number) is not an aspect";
@@ -257,8 +260,9 @@ let
   # projection onto content and `elementIds` its projection onto identity: both read one list of
   # reached elements (ADR-0012 clause 2, one walk, two materialised views), so their keys and
   # positions agree by construction. A named aspect's id is its facts id, an instance's its vertex id
-  # (each fan-out sibling its own), and inline content's `null`: its walk key is an address, never a
-  # name. One vertex two nodes reach is one id in both lists. `realize` reads neither.
+  # (each fan-out sibling its own), and inline content's its anonymous declaration's (den-hoag-8hlo3):
+  # `null` only for inline content that is no node, whose walk key is an address, never a name. One
+  # vertex two nodes reach is one id in both lists. `realize` reads neither.
   #
   # ── CONTENT IS COLLECTED BY AUTHORED CLASS AND KEYED BY DELIVERY CLASS ──
   # `deliveryClasses.<node>.<authored class>` names the delivery class that authored class's list
@@ -278,7 +282,8 @@ let
   #            edges to one node; an include cycle between named aspects terminates);
   #   content  inline content written at the include position (an aspect literal, or the part
   #            `aspectType` coerces a split definition into), delivered AT ITS POSITION, and its own
-  #            sites followed the same way;
+  #            sites followed the same way: an anonymous declaration (a site with a `target`) as the
+  #            node it is, deduplicated by id; content that is no node by its address;
   #   foreign  refused by name: a reference into a tree this one does not hold;
   #   sealed   refused by name: parametric content with no declaration id.
   #
@@ -326,10 +331,13 @@ let
   # An instance id names its declaration and formals, never class content. Under a declared
   # coordinate set, (i) and (ii) deliver nothing at rc 0.
   #
-  # A node's walk key is its id. An inline site's is `[ hostId ] ++ positionPath`, an ADDRESS into
-  # the host's published declaration and never a name for the content: it is generated exactly once
-  # (by the one item holding that position), so it never decides a merge, it is rendered only
-  # inside a refusal, and it never leaves this function. The classification is gen-aspects'
+  # A node's walk key is its id, and so is an anonymous declaration's (gen-aspects' facts node for
+  # static content, `<iid>/includes/<i>` for an applied body's, den-hoag-8hlo3): inline content is
+  # delivered as the node it is. An inline site that is no node (a named element, content past the
+  # depth budget) keys `[ anchor ] ++ positionPath`, an ADDRESS into the anchor node's published
+  # declaration and never a name for the content: it is generated exactly once (by the one item
+  # holding that position), so it never decides a merge, it is rendered only inside a refusal, and
+  # it never leaves this function. The classification is gen-aspects'
   # (`resolve`), read here and never re-run. A member is an identifier, resolved through the
   # facts' key→id relation (`nodeIdOf`), never by re-rendering the id.
   projectNodes =
@@ -338,7 +346,8 @@ let
       # One facts record per `project` call: each node's sites are a thunk in it, resolved at most
       # once however many nodes reach that node.
       facts = aspects.graphFacts cnf (values.aspects or { });
-      sitesOfEntry = aspects.includeSitesOfEntry cnf (values.aspects or { });
+      # An applied instance body's sites, its anonymous content keyed under the instance id.
+      sitesOfInstance = aspects.includeSitesOfInstance cnf (values.aspects or { });
       at = pos: prelude.concatStringsSep "." (map toString pos);
 
       memberId =
@@ -418,6 +427,12 @@ let
           instancesAt nodeName inst id
         else
           [ (nodeItem id) ];
+      # An item's coordinates. `anchor` is the node (or instance) whose value `pos` indexes into
+      # (`contentOf`); `host` is the node or instance its content was written in, and `base` the
+      # anchor's include path from there, so a refusal reads the position its author wrote.
+      anchorOf = item: item.anchor or item.id;
+      hostOf = item: item.host or item.id;
+      baseOf = item: item.base or [ ];
       succ =
         nodeName: item:
         builtins.concatLists (
@@ -426,28 +441,48 @@ let
               i: site:
               let
                 pos = item.pos ++ [ i ];
+                named = if item.id == null then anchorOf item else item.id;
+                hostAt = at (baseOf item ++ pos);
               in
               if site.kind == "local" then
                 reach nodeName item.inst site.target
+              else if site.kind == "content" && site ? target && facts.nodeData ? ${site.target} then
+                # A static anonymous declaration is a node: reached, and delivered, as one.
+                [
+                  (
+                    nodeItem site.target
+                    // {
+                      host = hostOf item;
+                      base = baseOf item ++ pos;
+                    }
+                  )
+                ]
               else if site.kind == "content" then
+                # An applied body's content (its id instance-relative), or an inline position that is
+                # no node (no `target`: a named element, content past the depth budget), which keeps
+                # its address and whose own sites refuse where read.
                 [
                   {
-                    key = [ item.id ] ++ pos;
-                    inherit (item) id inst;
+                    key = if site ? target then [ site.target ] else [ (anchorOf item) ] ++ pos;
+                    id = site.target or null;
+                    anchor = anchorOf item;
+                    host = hostOf item;
+                    base = baseOf item;
+                    inherit (item) inst;
                     inherit pos;
                     inherit (site) sites;
                   }
                 ]
               else if site.kind == "foreign" then
-                throw (foreignIncludeRefusal item.id (at pos) site.ref)
+                throw (foreignIncludeRefusal named (hostOf item) hostAt site.ref)
               else
-                throw (sealedIncludeRefusal item.id (at pos))
+                throw (sealedIncludeRefusal named (hostOf item) hostAt)
             )
             (
               if item.pos != [ ] then
                 item.sites
               else if item.inst != null then
-                sitesOfEntry instances.vertices.${item.inst}.entry
+                sitesOfInstance item.inst instances.vertices.${item.inst}.entry
               else
                 facts.includeSitesOf.${item.id}
             )
@@ -459,12 +494,14 @@ let
       # membership and order over the materialised projection, and the query's answer set must equal
       # the walk's vertex set or the node refuses (THE PROJECTION-PARITY DOOR, below).
       # Vertices: each receiver (keyed `toJSON [ <node> ]`, a key space no hash identity enters),
-      # each facts node, each instance OCCURRENCE (keyed `toJSON [ <node> <iid> ]`, one per node that
-      # reaches the instance). Edges, every one a fact of an earlier stratum:
+      # each facts node (anonymous declarations included), each instance OCCURRENCE (keyed
+      # `toJSON [ <node> <iid> ]`, one per node that reaches the instance), and each applied body's
+      # anonymous content (`<iid>/includes/<i>`), shared by the occurrences of its instance. Edges, every one a fact of an earlier stratum:
       #   members  receiver → each member's facts id
       #   reaches  receiver → the occurrence of every instance the relation lists at its scope
-      #   includes facts node or occurrence → each local target at its sites, through inline content
-      #            (static targets; at a facts node also the guard declarations reached at node scope)
+      #   includes facts node, occurrence or applied-body content → each local target and each
+      #            anonymous declaration at its sites, through inline content that is no node (static
+      #            targets; at a facts node also the guard declarations reached at node scope)
       #   nested   occurrence → the occurrences, at its node, of the instances the relation lists
       #            inside it (`nestedAt.<node>.<iid>`)
       # Edges are total over malformed relation shapes: the named doors fire in the ordered fold.
@@ -474,13 +511,36 @@ let
         sites:
         builtins.concatMap (
           s:
-          if s.kind == "local" then
+          if s.kind == "local" || (s.kind == "content" && s ? target) then
             [ s.target ]
           else if s.kind == "content" then
             localTargets s.sites
           else
             [ ]
         ) sites;
+      # Every applied body's anonymous content, by id: its sites. Content that is no node holds
+      # none below it (gen-aspects keys nothing under a target-less site).
+      contentSitesOf = builtins.concatMap (
+        s:
+        if s.kind == "content" && s ? target then
+          [
+            {
+              name = s.target;
+              value = s.sites;
+            }
+          ]
+          ++ contentSitesOf s.sites
+        else
+          [ ]
+      );
+      instContent = builtins.listToAttrs (
+        builtins.concatMap (
+          v: if builtins.isAttrs (entryOf v) then contentSitesOf (sitesOfInstance v (entryOf v)) else [ ]
+        ) (builtins.attrNames instances.vertices)
+      );
+      staticTargets = builtins.filter (
+        t: !(facts.nodeData ? ${t} && aspects.isGuardLeaf facts.nodeData.${t})
+      );
       listed =
         e:
         if builtins.isAttrs e then
@@ -491,7 +551,7 @@ let
           [ ];
       entryOf = v: instances.vertices.${v}.entry or { };
       instTargets =
-        v: if builtins.isAttrs (entryOf v) then localTargets (sitesOfEntry (entryOf v)) else [ ];
+        v: if builtins.isAttrs (entryOf v) then localTargets (sitesOfInstance v (entryOf v)) else [ ];
       # ONE shared lift: an instance vertex is lifted once per node that reaches it, as an OCCURRENCE
       # `[ node iid ]`, so the per-node nested edges are edges of one receiver-independent graph and
       # the lift is linear in the occurrences (den-hoag-8g2rn).
@@ -550,7 +610,9 @@ let
               if facts.nodeData ? ${v} then
                 (if aspects.isGuardLeaf facts.nodeData.${v} then [ ] else localTargets facts.includeSitesOf.${v})
               else if occs ? ${v} then
-                builtins.filter (t: !(aspects.isGuardLeaf facts.nodeData.${t})) (instTargets occs.${v}.iid)
+                staticTargets (instTargets occs.${v}.iid)
+              else if instContent ? ${v} then
+                staticTargets (localTargets instContent.${v})
               else
                 [ ];
             edges-nested =
@@ -563,7 +625,10 @@ let
           (
             scope.buildRoots {
               parentGraph = scope.vertices (
-                builtins.attrNames receivers ++ builtins.attrNames facts.nodeData ++ builtins.attrNames occs
+                builtins.attrNames receivers
+                ++ builtins.attrNames facts.nodeData
+                ++ builtins.attrNames occs
+                ++ builtins.attrNames instContent
               );
             }
           );
@@ -598,11 +663,11 @@ let
             } lifted (rid nodeName)).answers
         );
       # The entry an item delivers: a node's value or an instance's entry, or the element at the
-      # site's position inside its host's `includes`, descending through each level's `includes`.
+      # site's position inside its anchor's `includes`, descending through each level's `includes`.
       contentOf =
         item:
         builtins.foldl' (e: i: builtins.elemAt e.includes i) (
-          if item.inst != null then instances.vertices.${item.inst}.entry else facts.nodeData.${item.id}
+          if item.inst != null then instances.vertices.${item.inst}.entry else facts.nodeData.${anchorOf item}
         ) item.pos;
     in
     builtins.mapAttrs (
@@ -621,14 +686,16 @@ let
           map (i: {
             name = i.id;
             value = null;
-          }) (builtins.filter (i: i.pos == [ ]) walk)
+          }) (builtins.filter (i: i.id != null) walk)
         );
         delivers =
           v:
           (instances.vertices ? ${v})
+          || instContent ? ${v}
           || (facts.nodeData ? ${v} && !(aspects.isGuardLeaf facts.nodeData.${v}));
         # THE PROJECTION-PARITY DOOR: the query certifies the walk's membership by refusal. Guards
-        # and inline positions are not delivered vertices, so neither side counts them.
+        # and inline positions that are no node are not delivered vertices, so neither side counts
+        # them; an anonymous declaration is one, so both do.
         _parity =
           let
             extra = builtins.filter (v: delivers v && !(inFold ? ${v})) (builtins.attrNames inQuery);
@@ -649,7 +716,7 @@ let
             {
               inherit entry;
               classes = deliveryClassesOf cnf entry;
-              eid = if item.pos == [ ] then item.id else null;
+              eid = item.id;
             }
           ) walk
         );
