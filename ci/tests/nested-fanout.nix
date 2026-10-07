@@ -161,19 +161,23 @@ let
     let
       cnf = cnfOf declared;
       values = valuesOf cnf;
-      instances = aspects.instancesFor cnf values.aspects {
-        inherit suppliers;
-        containment = cEdit containment;
-        scopes = builtins.listToAttrs (
-          map (nd: {
-            name = nd;
-            value = {
-              members = [ shape ];
-              sources = nodeSources.${nd};
-            };
-          }) nodes
-        );
-      };
+      instances =
+        aspects.instancesFor cnf values.aspects
+          {
+            inherit suppliers;
+            containment = cEdit containment;
+          }
+          (
+            builtins.listToAttrs (
+              map (nd: {
+                name = nd;
+                value = {
+                  members = [ shape ];
+                  sources = nodeSources.${nd};
+                };
+              }) nodes
+            )
+          );
     in
     {
       inherit instances;

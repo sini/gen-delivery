@@ -120,7 +120,10 @@ let
   host = n: { sources.host = src n; };
   relationOf =
     values: suppliers: containment: scopes:
-    aspects.instancesFor cnf values.aspects { inherit suppliers scopes containment; };
+    aspects.instancesFor cnf values.aspects {
+      inherit suppliers;
+      inherit containment;
+    } scopes;
   # The entity graph's one-step containment (den-hoag-8g2rn). `fan` fans over a host's users in the
   # users' IDENTIFIER order: nfH holds u1 (uA) and u2 (uB); nfrH holds the same values under
   # identifiers in the other order, w1 (uB) and w2 (uA), the renamed arm (W7). nhuH holds the one
@@ -205,9 +208,9 @@ let
   # A guard is checked and fired under ONE declared set, so the closed world places its own tree.
   valuesCw = valuesWith cnfCw mods;
   relCw = aspects.instancesFor cnfCw valuesCw.aspects {
-    inherit (relInput) suppliers scopes;
+    suppliers = relInput.suppliers;
     inherit containment;
-  };
+  } relInput.scopes;
   # ADR-0019's equivalence: the same closed-world tree with `home`'s include of `hm` removed, so `nh`
   # projects there what an include that never existed delivers.
   valuesCwNoHm = valuesWith cnfCw (
@@ -227,9 +230,9 @@ let
   withoutHmCw = projectOf valuesCwNoHm {
     cnf = cnfCw;
     instances = aspects.instancesFor cnfCw valuesCwNoHm.aspects {
-      inherit (relInput) suppliers scopes;
+      suppliers = relInput.suppliers;
       inherit containment;
-    };
+    } relInput.scopes;
   };
   withViewCw =
     view:

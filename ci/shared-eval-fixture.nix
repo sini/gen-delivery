@@ -128,9 +128,9 @@ let
   relOf =
     v: sc:
     aspects.instancesFor cnf v.aspects {
-      inherit suppliers containment;
-      scopes = sc;
-    };
+      inherit suppliers;
+      inherit containment;
+    } sc;
   rel = relOf values scopes;
   dc = {
     a = "T1";
@@ -192,12 +192,11 @@ let
   ];
   applied =
     n: p:
-    (aspects.instanceOf cnf {
+    (aspects.instanceOf cnf { } {
       aspect = p;
-      value = facts.nodeData.${p};
       context = builtins.mapAttrs (k: s: suppliers.${s}.${k}) scopes.${n}.sources;
-      inherit (scopes.${n}) sources;
-    }).entry;
+      sources = (scopes.${n}).sources;
+    } (facts.nodeData.${p})).entry;
   coldValues = valuesOf [
     {
       aspects =

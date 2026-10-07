@@ -55,19 +55,23 @@ let
     sc: values:
     (genDeliveryWith sc).project {
       inherit values cnf;
-      instances = aspects.instancesFor cnf values.aspects {
-        suppliers = builtins.listToAttrs (
-          map (h: {
-            name = src h;
-            value.host = "h${h}";
-          }) (builtins.attrNames values.hosts)
-        );
-        containment = { };
-        scopes = builtins.mapAttrs (h: v: {
-          members = v.aspects;
-          sources.host = src h;
-        }) values.hosts;
-      };
+      instances =
+        aspects.instancesFor cnf values.aspects
+          {
+            suppliers = builtins.listToAttrs (
+              map (h: {
+                name = src h;
+                value.host = "h${h}";
+              }) (builtins.attrNames values.hosts)
+            );
+            containment = { };
+          }
+          (
+            builtins.mapAttrs (h: v: {
+              members = v.aspects;
+              sources.host = src h;
+            }) values.hosts
+          );
       selectNodes = _: values.hosts;
     };
   project = projectOver scope;
@@ -79,9 +83,8 @@ let
       inherit values cnf;
       instances = aspects.instancesFor cnf values.aspects {
         suppliers = { };
-        scopes = { };
         containment = { };
-      };
+      } { };
       selectNodes = _: values.hosts;
     };
 
