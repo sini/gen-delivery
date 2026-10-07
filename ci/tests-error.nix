@@ -103,17 +103,14 @@ let
       nixos.marks = [ host.name ];
     };
   hostGuard = aspects.guard (aspects.pred.has "host") { nixos.marks = [ "host" ]; };
-  # gen-aspects' bare-closure refusal at `loc`, the text a user meets for a context closure.
+  # gen-aspects' bare-closure refusal at `loc`, the text a user meets for a context closure. It is the
+  # one pattern in this file anchored at the START only: the text is gen-aspects', so these cells pin its
+  # identifying sentence and the position they exist to check, and the guidance after it is gen-aspects'
+  # to reword without reddening this repository.
   upstreamClosureRefusal =
     loc:
-    "gen-aspects: aspect `${loc}`: a context closure reached a gen-aspects-typed position. gen-aspects "
-    + "holds first-order guards only; a closure crosses the gen-rules door. Declare the aspect through the "
-    + "framework's surface, so that gen-rules' lowering turns the closure into a door node, or write it as a "
-    + "guard term (`guard (pred.has <coordinate>) <body>`). If the closure sits in the result of a module "
-    + "function written at an aspect position (`{ config, ... }: { includes = [ ({ host, ... }: …) ]; }`), the "
-    + "lowering reaches it only where the framework mounts gen-rules' registration table inside the aspect "
-    + "submodule (`cnf.aspectModules`); without that mount the closure arrives here unlowered. A closure that "
-    + "reads none of the module function's arguments can also be written beside the function instead of inside it.";
+    "^"
+    + lib.escapeRegex "gen-aspects: aspect `${loc}`: a context closure reached a gen-aspects-typed position. ";
 
   instancesShape = "gen-delivery: project: instances must be gen-aspects' instance relation { vertices; instantiates; reaches; nestedAt; declined = { reaches; nestedAt; }; }, each an attrset";
   memberUnknown = "gen-delivery: project: node 'server' names aspect 'ghost' as a member, and no aspect has that key";
@@ -405,7 +402,7 @@ in
     # the user still meets a named refusal for this input.
     test-sealed-include-names-the-position = {
       expr = closureClasses [ "a" ] [ { aspects.a.includes = [ hostFn ]; } ];
-      expectedError.msg = exactly (upstreamClosureRefusal "a.includes.[definition 1-entry 1]");
+      expectedError.msg = upstreamClosureRefusal "a.includes.[definition 1-entry 1]";
     };
     # The shape that reaches delivery's own sealed-include refusal: a guard at the include position.
     test-sealed-guard-include-names-the-position = {
@@ -430,9 +427,7 @@ in
               ];
             }
           ];
-      expectedError.msg = exactly (
-        upstreamClosureRefusal "a.includes.[definition 1-entry 1].includes.[definition 1-entry 2]"
-      );
+      expectedError.msg = upstreamClosureRefusal "a.includes.[definition 1-entry 1].includes.[definition 1-entry 2]";
     };
     test-nested-sealed-guard-include-names-the-position-path = {
       expr =
@@ -461,7 +456,7 @@ in
             { aspects.p.nixos.marks = [ "attr" ]; }
             { aspects.p = hostFn; }
           ];
-      expectedError.msg = exactly (upstreamClosureRefusal "p");
+      expectedError.msg = upstreamClosureRefusal "p";
     };
     test-parametric-guard-node-names-the-node-scope-door = {
       expr =
