@@ -29,10 +29,14 @@
   aspects,
   genMerge,
   term,
+  prelude,
   ...
 }:
 let
   exactly = msg: "^" + lib.escapeRegex msg + "$";
+  # gen-prelude's refusal text, composed with this library's own literal door, field and accepted
+  # set (den-hoag-7jltk): every assertion kept, none of gen-prelude's wording copied.
+  inherit (prelude) refusals;
   fx = import ./parametric-fixture.nix {
     inherit
       genDelivery
@@ -758,22 +762,32 @@ in
     # `ci/tests/doors.nix` pins that these are catchable; these pin WHICH refusal fired.
     test-project-missing-required-field-names-the-door = {
       expr = genDelivery.project { cnf.keySemantics = { }; };
-      expectedError.msg = exactly "gen-delivery.project: required field 'values' is missing (required: 'values') (in prelude.checkRequired)";
+      expectedError.msg = exactly (refusals.missingField "gen-delivery.project" [ "values" ] "values");
     };
     test-project-unknown-option-names-the-door = {
       expr = genDelivery.project {
         values = { };
         notAnOption = 1;
       };
-      expectedError.msg = exactly "gen-delivery.project: 'notAnOption' is not an option of this door; the options are closed (accepted: 'values', 'cnf', 'selectNodes', 'deliveryClasses', 'instances') (in prelude.checkOptions)";
+      expectedError.msg = exactly (
+        refusals.unknownOption "gen-delivery.project" [
+          "values"
+          "cnf"
+          "selectNodes"
+          "deliveryClasses"
+          "instances"
+        ] "notAnOption"
+      );
     };
     test-project-non-set-names-the-door = {
       expr = genDelivery.project 1;
-      expectedError.msg = exactly "gen-delivery.project: the argument must be an attrset, not a int (required: 'values') (in prelude.checkRequired)";
+      expectedError.msg = exactly (refusals.recordNotASet "gen-delivery.project" [ "values" ] 1);
     };
     test-realize-missing-required-field-names-the-door = {
       expr = genDelivery.realize { projected.nodes = { }; };
-      expectedError.msg = exactly "gen-delivery.realize: required field 'terminals' is missing (required: 'projected', 'terminals') (in prelude.checkRequired)";
+      expectedError.msg = exactly (
+        refusals.missingField "gen-delivery.realize" [ "projected" "terminals" ] "terminals"
+      );
     };
     test-realize-unknown-option-names-the-door = {
       expr = genDelivery.realize {
@@ -781,11 +795,22 @@ in
         terminals = { };
         notAnOption = 1;
       };
-      expectedError.msg = exactly "gen-delivery.realize: 'notAnOption' is not an option of this door; the options are closed (accepted: 'projected', 'terminals', 'bindings', 'refinements', 'layerOrder', 'extraModules') (in prelude.checkOptions)";
+      expectedError.msg = exactly (
+        refusals.unknownOption "gen-delivery.realize" [
+          "projected"
+          "terminals"
+          "bindings"
+          "refinements"
+          "layerOrder"
+          "extraModules"
+        ] "notAnOption"
+      );
     };
     test-realize-non-set-names-the-door = {
       expr = genDelivery.realize 1;
-      expectedError.msg = exactly "gen-delivery.realize: the argument must be an attrset, not a int (required: 'projected', 'terminals') (in prelude.checkRequired)";
+      expectedError.msg = exactly (
+        refusals.recordNotASet "gen-delivery.realize" [ "projected" "terminals" ] 1
+      );
     };
   };
 }

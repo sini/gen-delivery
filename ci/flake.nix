@@ -13,6 +13,12 @@
     # schema and flatten its resolved tree, and two gen-merge instances would make a fixture a
     # question about which copy answered.
     gen-aspects.url = "github:sini/gen-aspects";
+    gen-aspects.inputs.gen-prelude.follows = "gen-prelude";
+
+    # The prelude, declared so the refusal cells compose their expected text through its
+    # `refusals` (den-hoag-7jltk). gen-aspects and gen-scope FOLLOW it, so the run still holds one
+    # gen-prelude instance and a door-check cell never asks which copy answered.
+    gen-prelude.url = "github:sini/gen-prelude";
 
     # The other injected half: the record algebra whose ordered layered fold this surface's
     # contribution order is expressed over. Declared beside gen-aspects rather than reached through
@@ -23,6 +29,7 @@
     # The resolution calculus `project`'s query runs in, injected like the other three. Cells
     # doctor its `resolve` (`genDeliveryWith`) to show the query is read, and read as a set.
     gen-scope.url = "github:sini/gen-scope";
+    gen-scope.inputs.gen-prelude.follows = "gen-prelude";
   };
 
   outputs =
@@ -30,6 +37,7 @@
       gen-harness,
       gen-aspects,
       gen-algebra,
+      gen-prelude,
       gen-scope,
       nixpkgs,
       ...
@@ -37,10 +45,9 @@
     let
       aspects = gen-aspects.lib;
       algebra = gen-algebra.lib;
-      # The third injected value, reached THROUGH the gen-aspects pin for the same reason gen-merge
-      # and gen-schema are: one gen-prelude instance, so a door-check cell never asks which copy
-      # answered.
-      prelude = gen-aspects.inputs.gen-prelude.lib;
+      # The third injected value: the declared prelude, which gen-aspects follows, so gen-merge and
+      # gen-schema reached through that pin are built on the same instance.
+      prelude = gen-prelude.lib;
       genMerge = gen-aspects.inputs.gen-merge.lib;
       genSchema = gen-aspects.inputs.gen-schema.lib;
 
@@ -111,6 +118,7 @@
           genMerge
           genSchema
           nixpkgs
+          prelude
           ;
         # gen-aspects' own term formers, minted by its own gen-identity, for a guard body that reads
         # the context (a term crosses into gen-aspects' guard, so it is built by that pin's algebra).
