@@ -45,14 +45,10 @@ let
   realizeWith =
     layerOrder:
     genDelivery.realize {
-      inherit
-        projected
-        bindings
-        refinements
-        layerOrder
-        ;
-      terminals.nixos = args: args;
-    };
+      inherit bindings;
+      inherit refinements;
+      inherit layerOrder;
+    } { nixos = args: args; } projected;
 
   declared = realizeWith genDelivery.defaultLayerOrder;
   # The SAME layers, presented in the opposite specificity order. Nothing else differs.
@@ -146,12 +142,12 @@ in
       expr =
         let
           r = genDelivery.realize {
-            inherit projected;
-            terminals.nixos = args: args;
-            bindings.n2 = {
-              collide = "global-value-under-a-node-name";
+            bindings = {
+              n2 = {
+                collide = "global-value-under-a-node-name";
+              };
             };
-          };
+          } { nixos = args: args; } projected;
         in
         {
           # n2 does NOT absorb it as a refinement…
@@ -189,12 +185,12 @@ in
       expr =
         let
           r = genDelivery.realize {
-            inherit projected;
-            terminals.nixos = args: args;
-            bindings.notANode = {
-              collide = "global-value-under-a-node-name";
+            bindings = {
+              notANode = {
+                collide = "global-value-under-a-node-name";
+              };
             };
-          };
+          } { nixos = args: args; } projected;
         in
         r.nixos.n1.bindings.notANode == r.nixos.n2.bindings.notANode;
       expected = true;
@@ -235,11 +231,7 @@ in
     # rather than on the order being partial.
     test-omitted-layer-refuses-with-no-nodes-to-realize = {
       expr = refuses (
-        genDelivery.realize {
-          projected.nodes = { };
-          terminals.nixos = args: args;
-          layerOrder = [ "global" ];
-        }
+        genDelivery.realize { layerOrder = [ "global" ]; } { nixos = args: args; } { nodes = { }; }
       );
       expected = true;
     };

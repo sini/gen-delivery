@@ -37,10 +37,7 @@ let
     ];
   };
 
-  projected = genDelivery.project {
-    inherit (fixture) values cnf;
-    selectNodes = v: v.hosts;
-  };
+  projected = genDelivery.project { selectNodes = v: v.hosts; } fixture.cnf fixture.values;
 
   # A terminal that reports the shape of what it was handed WITHOUT evaluating any of it.
   countingTerminal =
@@ -51,10 +48,7 @@ let
       allCarryImports = builtins.all (v: v ? imports) modules;
     };
 
-  realized = genDelivery.realize {
-    inherit projected;
-    terminals.nixos = countingTerminal;
-  };
+  realized = genDelivery.realize { } { nixos = countingTerminal; } projected;
 
   # The rendered body, reached by its measured shape. This is the instrument the control applies.
   bodyOf = classValue: builtins.head (builtins.head classValue.imports).imports;

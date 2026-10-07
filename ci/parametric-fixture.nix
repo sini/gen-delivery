@@ -244,13 +244,9 @@ let
     );
   projectOf =
     values: extra:
-    genDelivery.project (
-      {
-        inherit values cnf;
-        selectNodes = v: v.hosts;
-      }
-      // extra
-    );
+    # `extra` is the call's own data: a `cnf` in it replaces the fixture's, and the rest are options.
+    genDelivery.project ({ selectNodes = v: v.hosts; } // removeAttrs extra [ "cnf" ]) (extra.cnf or cnf
+    ) values;
   marksOf =
     projected: n:
     (genMerge.evalModuleTree { } (

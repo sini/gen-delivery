@@ -65,22 +65,16 @@ let
 
   # `project` flattens `values.aspects` through gen-aspects; the registry above is already flat, and
   # `flatten` over a flat tree is the identity on it, so the fixture reaches the predicate unchanged.
-  projected = genDelivery.project {
-    inherit values cnf;
-    selectNodes = v: v.hosts;
-  };
+  projected = genDelivery.project { selectNodes = v: v.hosts; } cnf values;
 
   tripwire = { name, ... }: throw "gen-delivery test: terminal invoked for `${name}`";
-  realizedTripwire = genDelivery.realize {
-    inherit projected;
-    terminals = {
-      nixos = tripwire;
-      metrics = tripwire;
-      chan = tripwire;
-      facetKey = tripwire;
-      nested = tripwire;
-    };
-  };
+  realizedTripwire = genDelivery.realize { } {
+    nixos = tripwire;
+    metrics = tripwire;
+    chan = tripwire;
+    facetKey = tripwire;
+    nested = tripwire;
+  } projected;
   forces = v: (builtins.tryEval (builtins.deepSeq v v)).success;
 
   refuses = thunk: !(builtins.tryEval thunk).success;
@@ -179,14 +173,15 @@ in
     # ── O-DECL-3a: the missing INPUT refuses — and the PAIR is the measurement ──
     # Absence of the declaration INPUT and absence of a KEY's declaration go opposite ways. Read
     # alone either cell is satisfied by a surface that treats all absence alike; together they show
-    # the surface discriminates the two.
+    # the surface discriminates the two. `cnf` is a positional operand (den-hoag-7gp66 P2), so its
+    # absence is written as `null`, the absent state `requireCnf` refuses.
     test-missing-category-source-refuses = {
-      expr = refuses (genDelivery.project { inherit values; });
+      expr = refuses (genDelivery.project { } null values);
       expected = true;
     };
     # CONTROL, same call, same run, declaration present: it succeeds.
     test-control-category-source-present-succeeds = {
-      expr = refuses (genDelivery.project { inherit values cnf; });
+      expr = refuses (genDelivery.project { } cnf values);
       expected = false;
     };
     # The refusal does not depend on the input having content to classify. An empty registry never
@@ -194,7 +189,7 @@ in
     # would make it a refusal that fires on the size of the input rather than on the input's
     # absence.
     test-missing-category-source-refuses-on-an-empty-registry = {
-      expr = refuses (genDelivery.project { values = { }; });
+      expr = refuses (genDelivery.project { } null { });
       expected = true;
     };
   };

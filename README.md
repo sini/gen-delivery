@@ -12,15 +12,16 @@ genDelivery = inputs.gen-delivery.lib {
   scope = inputs.gen-scope.lib;
 };
 
+# options first, then the mkAspectSchema argument you built your grammar from, then your own
+# resolved config, the subject
 projected = genDelivery.project {
-  values = composed.values;   # your own resolved config
-  cnf = myAspectSchemaArgs;   # the mkAspectSchema argument you built your grammar from
-};
+  selectNodes = v: v.hosts;   # which attrset of your values holds the node instances
+} myAspectSchemaArgs composed.values;
 
-realized = genDelivery.realize {
-  inherit projected;
-  terminals.nixos = carriage: mySystemBuilder carriage;
-};
+# options first, then the terminals, then the projection, the subject
+realized = genDelivery.realize { } {
+  nixos = carriage: mySystemBuilder carriage;
+} projected;
 # => { nixos = { <node> = <artifact>; }; }
 ```
 
@@ -46,11 +47,11 @@ chain whose only statement anywhere was a gloss in a header comment. It was comp
 
 ## The published surface
 
-|                                                                                                        |                                                                                                           |
-| ------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
-| `project { values, cnf, selectNodes, deliveryClasses ? {}, instances ? {} }`                           | the flat aspect registry + the per-node build projection, over the include closure of each node's members |
-| `realize { projected, terminals, bindings ? {}, refinements ? {}, layerOrder ? …, extraModules ? {} }` | class-major artifacts, `{ <class>.<node> = artifact; }`                                                   |
-| `defaultLayerOrder`                                                                                    | the contribution-order declaration, readable                                                              |
+|                                                                                                      |                                                                                                           |
+| ---------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `project { selectNodes ?, deliveryClasses ? {}, instances ? {} } cnf values`                         | the flat aspect registry + the per-node build projection, over the include closure of each node's members |
+| `realize { bindings ? {}, refinements ? {}, layerOrder ? …, extraModules ? {} } terminals projected` | class-major artifacts, `{ <class>.<node> = artifact; }`                                                   |
+| `defaultLayerOrder`                                                                                  | the contribution-order declaration, readable                                                              |
 
 ### the include closure
 

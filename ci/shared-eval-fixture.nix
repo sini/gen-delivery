@@ -140,11 +140,10 @@ let
   projectOf =
     v: instances: nodes:
     genDelivery.project {
-      values = v;
-      inherit cnf instances;
       selectNodes = _: nodes;
       deliveryClasses = builtins.intersectAttrs nodes (builtins.mapAttrs (_: d: { T = d; }) dc);
-    };
+      inherit instances;
+    } cnf v;
   abc = builtins.intersectAttrs dc values.hosts;
   marksOf =
     mods:
@@ -231,13 +230,10 @@ let
     };
   realizedOf =
     projected:
-    genDelivery.realize {
-      inherit projected;
-      terminals = {
-        T1 = terminal "p1";
-        T2 = terminal "p2";
-      };
-    };
+    genDelivery.realize { } {
+      T1 = terminal "p1";
+      T2 = terminal "p2";
+    } projected;
 in
 {
   inherit

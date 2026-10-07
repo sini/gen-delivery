@@ -54,20 +54,14 @@ let
     )).config;
   server = members: mods: tree cnf ([ { hosts.server.aspects = members; } ] ++ mods);
 
-  projectWith =
-    cnf: values:
-    genDelivery.project {
-      inherit values cnf;
-      selectNodes = v: v.hosts;
-    };
+  projectWith = cnf: values: genDelivery.project { selectNodes = v: v.hosts; } cnf values;
   realized =
     cnf: values:
-    genDelivery.realize {
-      projected = projectWith cnf values;
-      terminals.nixos =
+    genDelivery.realize { } {
+      nixos =
         { modules, ... }:
         (genMerge.evalModuleTree { } ([ { freeformType = t.lazyAttrsOf t.anything; } ] ++ modules)).config;
-    };
+    } (projectWith cnf values);
   marksWith = cnf: values: (realized cnf values).nixos.server.marks;
   marks = marksWith cnf;
   nixosCount = values: builtins.length (projectWith cnf values).nodes.server.classes.nixos;

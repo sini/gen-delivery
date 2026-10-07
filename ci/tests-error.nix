@@ -94,10 +94,7 @@ let
         )).config;
     in
     builtins.attrNames
-      (genDelivery.project {
-        inherit values cnf;
-        selectNodes = v: v.hosts;
-      }).nodes.server.classes;
+      (genDelivery.project { selectNodes = v: v.hosts; } cnf values).nodes.server.classes;
   # A context closure: gen-aspects refuses it upstream (den-hoag-lwbb1 stage 2b), naming the gen-rules
   # door, before delivery reads it. The parametric shape that still reaches delivery's own refusals is
   # a first-order guard, `hostGuard`.
@@ -241,17 +238,12 @@ let
             };
           }
         ]).config;
-      r = genDelivery.realize {
-        projected = genDelivery.project {
-          inherit
-            values
-            cnf
-            selectNodes
-            deliveryClasses
-            ;
-        };
-        inherit terminals;
-      };
+      r = genDelivery.realize { } terminals (
+        genDelivery.project {
+          inherit selectNodes;
+          inherit deliveryClasses;
+        } cnf values
+      );
     in
     builtins.deepSeq r r;
   pinMap = {
@@ -263,34 +255,35 @@ let
   # The address fixture: `n` carries a and b content, `m` carries b only; terminals a and b.
   addressed =
     extraModules:
-    genDelivery.realize {
-      projected.nodes = {
-        n = {
-          bindings = { };
-          classes = {
-            a = [ { from = "a"; } ];
-            b = [ { from = "b"; } ];
-          };
-        };
-        m = {
-          bindings = { };
-          classes.b = [ { from = "b"; } ];
-        };
-      };
-      terminals = {
+    genDelivery.realize { inherit extraModules; }
+      {
         a = args: args;
         b = args: args;
+      }
+      {
+        nodes = {
+          n = {
+            bindings = { };
+            classes = {
+              a = [ { from = "a"; } ];
+              b = [ { from = "b"; } ];
+            };
+          };
+          m = {
+            bindings = { };
+            classes.b = [ { from = "b"; } ];
+          };
+        };
       };
-      inherit extraModules;
-    };
 in
 {
   flake.testsError = {
     # THE MISSING DECLARATION INPUT. Its suite cell asserts THAT the surface refuses; this one
     # asserts it refuses AS the missing category source, which is the half that distinguishes it
-    # from the refusal below and from any other throw the projection could produce.
+    # from the refusal below and from any other throw the projection could produce. `cnf` is a
+    # positional operand (den-hoag-7gp66 P2), so its absence is written as `null`, the absent state.
     test-missing-category-source-names-the-input = {
-      expr = (genDelivery.project { values = { }; }).aspects;
+      expr = (genDelivery.project { } null { }).aspects;
       expectedError.msg = exactly missingCategorySource;
     };
 
@@ -300,11 +293,7 @@ in
     # not decoration: the declaration must be present or `requireCnf` fires first under `project`'s
     # `seq` and this cell would assert the wrong refusal while still reading green.
     test-missing-node-selector-names-the-formal = {
-      expr =
-        (genDelivery.project {
-          values = { };
-          cnf.keySemantics = { };
-        }).nodes;
+      expr = (genDelivery.project { } { keySemantics = { }; } { }).nodes;
       expectedError.msg = exactly noNodeSelector;
     };
 
@@ -314,11 +303,7 @@ in
     # reachable independently rather than one shadowing the other.
     test-select-nodes-non-attrset-refuses-by-name = {
       expr =
-        (genDelivery.project {
-          values = { };
-          cnf.keySemantics = { };
-          selectNodes = _: "not an attrset";
-        }).nodes;
+        (genDelivery.project { selectNodes = _: "not an attrset"; } { keySemantics = { }; } { }).nodes;
       expectedError.msg = exactly "gen-delivery: project: selectNodes must return an attrset of node instances ({ <node> = <instance>; }), got string";
     };
 
@@ -329,15 +314,13 @@ in
     # realize's root, not inside the per-node fold.
     test-duplicate-layer-refuses-by-name = {
       expr = genDelivery.realize {
-        projected.nodes = { };
-        terminals.nixos = args: args;
         layerOrder = [
           "projection"
           "projection"
           "global"
           "refinement"
         ];
-      };
+      } { nixos = args: args; } { nodes = { }; };
       expectedError.msg = exactly duplicateLayer;
     };
 
@@ -370,15 +353,14 @@ in
     # at the root for the same reason.
     test-content-for-a-class-with-no-terminal-refuses-by-name = {
       expr =
-        (genDelivery.realize {
-          projected.nodes.n = {
+        (genDelivery.realize { } { a = args: args; } {
+          nodes.n = {
             bindings = { };
             classes = {
               a = [ { from = "a"; } ];
               d = [ { from = "d"; } ];
             };
           };
-          terminals.a = args: args;
         }).a;
       expectedError.msg = exactly "gen-delivery: realize: node n carries declared d content, and class d has no terminal — the content would be dropped";
     };
@@ -758,47 +740,48 @@ in
       expectedError.msg = exactly "gen-delivery: realize: node c carries declared T content, and class T has no terminal — the content would be dropped";
     };
 
-    # ── THE DOOR CHECKS (den-hoag-7gp66 P1): each refusal names the door, then the primitive ──
-    # `ci/tests/doors.nix` pins that these are catchable; these pin WHICH refusal fired.
-    test-project-missing-required-field-names-the-door = {
-      expr = genDelivery.project { cnf.keySemantics = { }; };
-      expectedError.msg = exactly (refusals.missingField "gen-delivery.project" [ "values" ] "values");
-    };
+    # ── THE DOOR CHECKS (den-hoag-7gp66 P2): each refusal names the door, then the primitive ──
+    # `ci/tests/doors.nix` pins that these are catchable; these pin WHICH refusal fired. Both doors
+    # take their options first, one closed set: an unknown option, a non-set options argument and
+    # the old one-record shape (whose first field is not an option) are each refused by name at
+    # `f opts`, before any operand.
     test-project-unknown-option-names-the-door = {
-      expr = genDelivery.project {
-        values = { };
-        notAnOption = 1;
-      };
+      expr = genDelivery.project { notAnOption = 1; };
       expectedError.msg = exactly (
         refusals.unknownOption "gen-delivery.project" [
-          "values"
-          "cnf"
           "selectNodes"
           "deliveryClasses"
           "instances"
         ] "notAnOption"
       );
     };
+    test-project-old-one-record-shape-names-the-door = {
+      expr = genDelivery.project {
+        cnf.keySemantics = { };
+        values = { };
+      };
+      expectedError.msg = exactly (
+        refusals.unknownOption "gen-delivery.project" [
+          "selectNodes"
+          "deliveryClasses"
+          "instances"
+        ] "cnf"
+      );
+    };
     test-project-non-set-names-the-door = {
       expr = genDelivery.project 1;
-      expectedError.msg = exactly (refusals.recordNotASet "gen-delivery.project" [ "values" ] 1);
-    };
-    test-realize-missing-required-field-names-the-door = {
-      expr = genDelivery.realize { projected.nodes = { }; };
       expectedError.msg = exactly (
-        refusals.missingField "gen-delivery.realize" [ "projected" "terminals" ] "terminals"
+        refusals.optionsNotASet "gen-delivery.project" [
+          "selectNodes"
+          "deliveryClasses"
+          "instances"
+        ] 1
       );
     };
     test-realize-unknown-option-names-the-door = {
-      expr = genDelivery.realize {
-        projected.nodes = { };
-        terminals = { };
-        notAnOption = 1;
-      };
+      expr = genDelivery.realize { notAnOption = 1; };
       expectedError.msg = exactly (
         refusals.unknownOption "gen-delivery.realize" [
-          "projected"
-          "terminals"
           "bindings"
           "refinements"
           "layerOrder"
@@ -806,10 +789,29 @@ in
         ] "notAnOption"
       );
     };
+    test-realize-old-one-record-shape-names-the-door = {
+      expr = genDelivery.realize {
+        projected.nodes = { };
+        terminals = { };
+      };
+      expectedError.msg = exactly (
+        refusals.unknownOption "gen-delivery.realize" [
+          "bindings"
+          "refinements"
+          "layerOrder"
+          "extraModules"
+        ] "projected"
+      );
+    };
     test-realize-non-set-names-the-door = {
       expr = genDelivery.realize 1;
       expectedError.msg = exactly (
-        refusals.recordNotASet "gen-delivery.realize" [ "projected" "terminals" ] 1
+        refusals.optionsNotASet "gen-delivery.realize" [
+          "bindings"
+          "refinements"
+          "layerOrder"
+          "extraModules"
+        ] 1
       );
     };
   };

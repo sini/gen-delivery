@@ -51,13 +51,10 @@ let
       peers = builtins.sort builtins.lessThan (builtins.attrNames extent);
     };
 
-  spines = genDelivery.realize {
-    inherit projected;
-    terminals = {
-      alpha = spineTerminal;
-      beta = spineTerminal;
-    };
-  };
+  spines = genDelivery.realize { } {
+    alpha = spineTerminal;
+    beta = spineTerminal;
+  } projected;
 
   # THE POSITIVE CONTROL'S INSTRUMENT: one node's artifact THROWS. A peer that reads only the spine
   # must still evaluate; a peer that forces the artifact must not.
@@ -73,13 +70,10 @@ let
 
   # `beta` carries content in the shared projection, so it needs a terminal or `realize` refuses
   # it (R4); the cells below read `boomed.alpha` only.
-  boomed = genDelivery.realize {
-    inherit projected;
-    terminals = {
-      alpha = boomTerminal;
-      beta = spineTerminal;
-    };
-  };
+  boomed = genDelivery.realize { } {
+    alpha = boomTerminal;
+    beta = spineTerminal;
+  } projected;
 
   forces = v: (builtins.tryEval (builtins.deepSeq v v)).success;
 in

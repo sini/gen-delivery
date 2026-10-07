@@ -54,7 +54,6 @@ let
   projectOver =
     sc: values:
     (genDeliveryWith sc).project {
-      inherit values cnf;
       instances =
         aspects.instancesFor cnf values.aspects
           {
@@ -73,20 +72,19 @@ let
             }) values.hosts
           );
       selectNodes = _: values.hosts;
-    };
+    } cnf values;
   project = projectOver scope;
   # A static tree under an empty relation (no scope reads it), so a refusal in one aspect's sites is
   # met only by a host that reaches that aspect.
   projectStatic =
     values:
     (genDeliveryWith scope).project {
-      inherit values cnf;
       instances = aspects.instancesFor cnf values.aspects {
         suppliers = { };
         containment = { };
       } { };
       selectNodes = _: values.hosts;
-    };
+    } cnf values;
 
   try =
     v:

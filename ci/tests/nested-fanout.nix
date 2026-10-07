@@ -181,18 +181,24 @@ let
     in
     {
       inherit instances;
-      p = genDelivery.project {
-        values = values // {
-          nodes = builtins.listToAttrs (
-            map (nd: {
-              name = nd;
-              value.aspects = [ shape ];
-            }) nodes
+      p =
+        genDelivery.project
+          {
+            selectNodes = vs: vs.nodes;
+            inherit instances;
+          }
+          cnf
+          (
+            values
+            // {
+              nodes = builtins.listToAttrs (
+                map (nd: {
+                  name = nd;
+                  value.aspects = [ shape ];
+                }) nodes
+              );
+            }
           );
-        };
-        inherit cnf instances;
-        selectNodes = vs: vs.nodes;
-      };
     };
   valuesAt =
     args:

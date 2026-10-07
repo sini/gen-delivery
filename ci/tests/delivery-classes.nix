@@ -52,15 +52,7 @@ let
   };
 
   projectWith =
-    members: extra:
-    genDelivery.project (
-      {
-        values = values members;
-        inherit cnf;
-        selectNodes = v: v.hosts;
-      }
-      // extra
-    );
+    members: extra: genDelivery.project ({ selectNodes = v: v.hosts; } // extra) cnf (values members);
 
   # Each delivery class's terminal stamps its own pin, so the value says which terminal ran.
   term =
@@ -75,10 +67,7 @@ let
     };
   realizeWith =
     terminals: members: extra:
-    genDelivery.realize {
-      projected = projectWith members extra;
-      inherit terminals;
-    };
+    genDelivery.realize { } terminals (projectWith members extra);
   pinned = realizeWith {
     T1 = term "p1";
     T2 = term "p2";

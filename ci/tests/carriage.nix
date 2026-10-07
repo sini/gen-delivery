@@ -50,10 +50,10 @@ let
   };
 
   realized = genDelivery.realize {
-    inherit projected;
-    terminals.nixos = reflect;
-    extraModules.nixos.owned = [ nodeExtra ];
-  };
+    extraModules = {
+      nixos.owned = [ nodeExtra ];
+    };
+  } { nixos = reflect; } projected;
 
   carriageKeys = node: builtins.sort builtins.lessThan (builtins.attrNames realized.nixos.${node});
 

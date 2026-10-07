@@ -41,33 +41,24 @@ let
     ];
   };
 
-  projected = genDelivery.project {
-    inherit (fixture) values cnf;
-    selectNodes = v: v.hosts;
-  };
+  projected = genDelivery.project { selectNodes = v: v.hosts; } fixture.cnf fixture.values;
 
   # A reflecting terminal — the realized shape is assertable without forcing a class body.
   dataTerminal = { name, ... }: { inherit name; };
 
-  realized = genDelivery.realize {
-    inherit projected;
-    terminals = {
-      nixos = dataTerminal;
-      metrics = dataTerminal;
-    };
-  };
+  realized = genDelivery.realize { } {
+    nixos = dataTerminal;
+    metrics = dataTerminal;
+  } projected;
 
   # A terminal that THROWS on invocation, so "the terminal is never called for a contentless class"
   # is a measurement rather than an inference from the output shape.
   tripwireTerminal = { name, ... }: throw "gen-delivery test: class terminal invoked for `${name}`";
 
-  realizedTripwire = genDelivery.realize {
-    inherit projected;
-    terminals = {
-      nixos = tripwireTerminal;
-      metrics = tripwireTerminal;
-    };
-  };
+  realizedTripwire = genDelivery.realize { } {
+    nixos = tripwireTerminal;
+    metrics = tripwireTerminal;
+  } projected;
 
   forces = v: (builtins.tryEval (builtins.deepSeq v v)).success;
 in

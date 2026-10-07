@@ -16,11 +16,11 @@
 # co-resident — which is why this library can read a declaration gen-aspects owns without
 # gen-aspects acquiring a delivery-shaped role over the facts it publishes.
 #
-# `prelude` arrives the same way, and only its door checks are read: `project` and `realize` are
-# MIXED doors (required plus optional fields), so each composes `prelude.checkOptions` over
-# `prelude.checkRequired` — closed over the whole set, transitionally, until P2 moves the options
-# off the record (den-hoag-7gp66 P1). A missing or unknown field is then a refusal naming the door
-# that `builtins.tryEval` catches, where a native closed formal aborted past it.
+# `prelude` arrives the same way, and only its door constructor is read: `project` and `realize`
+# take their options first, one closed set built with `prelude.door`, and their operands
+# positionally after it, the subject last (den-hoag-7gp66 P2). An unknown option is then a refusal
+# naming the door that `builtins.tryEval` catches, at the options application itself, where a
+# native closed formal aborted past it.
 #
 # `scope` arrives the same way, as gen-assemble takes it: gen-scope's engine, the one resolution
 # calculus, through which `project` runs the receiver-rooted query that certifies each node's walk.
@@ -759,31 +759,45 @@ let
   # `project` — the flat aspect registry plus the per-node build projection. Both keys were
   # published by the dissolving library's compose result; they are this surface's own now.
   #
-  # MIXED door: `values` required; `cnf`, `selectNodes`, `deliveryClasses` and `instances` optional;
-  # the set closed.
+  # `project { selectNodes ?; deliveryClasses ?; instances ?; } cnf values` (den-hoag-7gp66 P2, rules
+  # 2 and 4). The options are one closed set first, a `prelude.door` refused by name and catchably at
+  # `project opts`'s own WHNF. `selectNodes` is an option because a caller may omit it — its absence
+  # is refused only where the node set is read, so an `aspects`-only caller never supplies it (the
+  # criterion at `selector` below). `cnf` is NOT: its absence is refused at the root on every input,
+  # so it is a required operand, the configuration the predicate reads, positional and before the
+  # values, the subject the surface projects. `project { selectNodes = …; } cnf` is a projection
+  # awaiting its values.
   project =
-    args:
+    prelude.door
+      {
+        name = "gen-delivery.project";
+        optional = [
+          "selectNodes"
+          "deliveryClasses"
+          "instances"
+        ];
+      }
+      (
+        o: cnf: values:
+        projectCore o cnf values
+      );
+
+  projectCore =
+    o: cnf: values:
     let
-      checked = prelude.checkOptions "gen-delivery.project" [
-        "values"
-        "cnf"
-        "selectNodes"
-        "deliveryClasses"
-        "instances"
-      ] (prelude.checkRequired "gen-delivery.project" [ "values" ] args);
-      # The resolved config VALUES of the caller's own evaluation.
-      values = checked.values;
-      # THE DECLARATION INPUT — the caller's own `mkAspectSchema` argument, arriving BESIDE the
-      # values rather than through them. `null` is not a default: it is the absent state, and
+      # `values` — the resolved config VALUES of the caller's own evaluation.
+      #
+      # `cnf` — THE DECLARATION INPUT, the caller's own `mkAspectSchema` argument, arriving BESIDE
+      # the values rather than through them. `null` is not a default: it is the absent state, and
       # `requireCnf` refuses it by name. Absence here is a decision, and a defaulted category
       # source would silently degrade the predicate to the shape test being removed.
-      cnf = checked.cnf or null;
+      #
       # `values → { <node> = instance; }` — names which resolved attrset holds the node instances.
       # `null` is the ABSENT state, not a default. A default here (`v: v.<name> or { }`) bakes a
       # DOMAIN word into this surface and converts a missing registry into a well-typed empty one,
       # which is the vanishing ADR-0035 removes: any registry not spelled `<name>` projected `{ }`
       # with no diagnostic.
-      selectNodes = checked.selectNodes or null;
+      selectNodes = o.selectNodes or null;
       # Forced by the `seq` below rather than only where the predicate reads it. A registry with no
       # member aspects never reaches the predicate at all, so a lazy refusal would let the surface
       # be CONSTRUCTED with no category source and stay silent until some later fixture happened to
@@ -816,7 +830,7 @@ let
       # `{ <node> = { <authored class> = <delivery class>; }; }` — the delivery-class map. An absent
       # field is `{ }` and an absent entry the identity, so a caller passing no map projects exactly
       # as before. It is DATA derived from the caller's values, never from this projection's output.
-      deliveryClasses = checked.deliveryClasses or { };
+      deliveryClasses = o.deliveryClasses or { };
       # THE MAP'S DOORS, forced at the root beside `declaration` because they read only the map, the
       # declaration and the node set. The node set is read only when the map is non-empty, so an
       # empty map reads neither `values` nor `selectNodes` and nothing here fires on the size of the
@@ -856,7 +870,7 @@ let
       instances =
         let
           v =
-            checked.instances or {
+            o.instances or {
               vertices = { };
               instantiates = { };
               reaches = { };
@@ -890,28 +904,26 @@ let
           throw instancesShapeRefusal;
       registry = if values ? aspects then aspects.flatten values.aspects else { };
     in
-    builtins.seq checked (
-      builtins.seq declaration (
-        builtins.seq _deliveryClassesCheck (
-          builtins.seq instances {
-            # The FLAT aspect registry (keyed by aspect path): each entry carries its per-class
-            # deferredModule fields. The deferredModules are inspectable but unforced, so class bodies
-            # cross into a target's evaluation unevaluated. Absent an `aspects` surface, this is empty.
-            aspects = registry;
+    builtins.seq declaration (
+      builtins.seq _deliveryClassesCheck (
+        builtins.seq instances {
+          # The FLAT aspect registry (keyed by aspect path): each entry carries its per-class
+          # deferredModule fields. The deferredModules are inspectable but unforced, so class bodies
+          # cross into a target's evaluation unevaluated. Absent an `aspects` surface, this is empty.
+          aspects = registry;
 
-            # The per-node build projection — a node-keyed reshape of the flat registry, driven by each
-            # node's `aspects` membership. This is what the terminal builds from.
-            nodes = projectNodes declaration deliveryClasses instances nodes values;
-          }
-        )
+          # The per-node build projection — a node-keyed reshape of the flat registry, driven by each
+          # node's `aspects` membership. This is what the terminal builds from.
+          nodes = projectNodes declaration deliveryClasses instances nodes values;
+        }
       )
     );
 
   # `realize` — the terminal registry fold. PURE (builtins only, no nixpkgs). It turns a `project`
   # result plus a per-class terminal into class-major artifacts:
   #
-  #     realize { projected; terminals; bindings ? {}; refinements ? {}; layerOrder ? …;
-  #               extraModules ? {}; } -> { <class>.<node> = artifact; }
+  #     realize { bindings ? {}; refinements ? {}; layerOrder ? …; extraModules ? {}; }
+  #       terminals projected -> { <class>.<node> = artifact; }
   #
   # For each class that has a terminal, every node whose projection carries a NON-EMPTY module list
   # for that class is realized by calling the terminal with the pinned contract (below). A node with
@@ -939,41 +951,42 @@ let
   #                Opaque: this surface never reads inside it, and the keys in it are the
   #                consumer's own (`osConfig` is one framework's instance of one).
   #
-  # MIXED door: `projected` and `terminals` required; the rest optional; the set closed.
+  # den-hoag-7gp66 P2, rules 2 and 4: the layer inputs and the extras are one closed options set
+  # first, a `prelude.door` refused by name and catchably at `realize opts`'s own WHNF. The terminals
+  # are configuration and the projection the subject the fold realizes, so `realize opts terminals`
+  # is a realization awaiting its projection.
   realize =
-    args:
+    prelude.door
+      {
+        name = "gen-delivery.realize";
+        optional = [
+          "bindings"
+          "refinements"
+          "layerOrder"
+          "extraModules"
+        ];
+      }
+      (
+        o: terminals: projected:
+        realizeCore o terminals projected
+      );
+
+  realizeCore =
+    o: terminals: projected:
     let
-      checked =
-        prelude.checkOptions "gen-delivery.realize"
-          [
-            "projected"
-            "terminals"
-            "bindings"
-            "refinements"
-            "layerOrder"
-            "extraModules"
-          ]
-          (
-            prelude.checkRequired "gen-delivery.realize" [
-              "projected"
-              "terminals"
-            ] args
-          );
-      # A `project` result; only `.nodes` (the per-node build projection) is consumed.
-      projected = checked.projected;
-      # `{ <class> = terminal; }` — which classes to realize, and how. The output keys are exactly
-      # these class names.
-      terminals = checked.terminals;
+      # `projected` — a `project` result; only `.nodes` (the per-node build projection) is consumed.
+      # `terminals` — `{ <class> = terminal; }`: which classes to realize, and how. The output keys
+      # are exactly these class names.
       # THE GLOBAL contribution layer: one attrset applied to every node. It holds bindings and
       # nothing else — a key here named after a node is a binding named after a node, not that
       # node's refinement.
-      bindings = checked.bindings or { };
+      bindings = o.bindings or { };
       # THE PER-NODE contribution layer: `{ <node> = <attrset>; }`. A separate input from the
       # global layer, which is what keeps the two namespaces apart by construction.
-      refinements = checked.refinements or { };
+      refinements = o.refinements or { };
       # THE DECLARED ORDER over those layers, least-specific first. A default value, readable and
       # overridable; never an implicit order, and never derived from what kind of thing a layer is.
-      layerOrder = checked.layerOrder or defaultLayerOrder;
+      layerOrder = o.layerOrder or defaultLayerOrder;
       # `{ <class>.<node> = [ module ]; }` — extras ADDRESSED to one class's terminal at one node,
       # the same coordinate as the output (`[]` when absent). Every address must be a point of the
       # realization or it refuses by name (the checks below). Extras SUPPLEMENT a realization and
@@ -986,7 +999,7 @@ let
       # OWN OUTPUT therefore diverges (uncatchable infinite recursion): a total check must read every
       # address before the realization it guards is observable, so no placement of the check admits
       # it. Derive addresses and projections from the values, never from the realization.
-      extraModules = checked.extraModules or { };
+      extraModules = o.extraModules or { };
 
       nodes = projected.nodes;
 
@@ -1126,10 +1139,8 @@ let
         )
       ) terminals;
     in
-    builtins.seq checked (
-      builtins.seq _layerOrderCheck (
-        builtins.seq _extraModulesCheck (builtins.seq _contentCheck realized)
-      )
+    builtins.seq _layerOrderCheck (
+      builtins.seq _extraModulesCheck (builtins.seq _contentCheck realized)
     );
 in
 {

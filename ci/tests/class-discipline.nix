@@ -47,7 +47,7 @@ let
   # The consumer's b -> a adapter, applied to the node's own b content: the crossing is caller code.
   adaptBA = node: map (v: { adapted = v; }) projected.nodes.${node}.classes.b;
 
-  realizeWith = extraModules: genDelivery.realize { inherit projected terminals extraModules; };
+  realizeWith = extraModules: genDelivery.realize { inherit extraModules; } terminals projected;
 
   implicit = realizeWith { };
   crossed = realizeWith { a.n = adaptBA "n"; };
@@ -61,21 +61,23 @@ let
 
   # A projection that THROWS when forced. The result's own spine reads it — the content check is
   # total over the class sets, so it must — and the positive control below uses it.
-  unforceableProjection = extraModules: {
-    projected.nodes = throw "gen-delivery test: projection forced";
-    inherit terminals extraModules;
-  };
+  unforceableProjection =
+    extraModules:
+    genDelivery.realize { inherit extraModules; } terminals {
+      nodes = throw "gen-delivery test: projection forced";
+    };
 
   # A projection whose every CONTENT LIST throws when forced. The content check reads each node's
   # class SET, and a class's list only when that class has no terminal — where it refuses anyway —
   # so the result's spine must not reach a list of a class that has one.
-  unforceableContent = extraModules: {
-    projected.nodes = builtins.mapAttrs (
-      _: nc:
-      nc // { classes = builtins.mapAttrs (_: _: throw "gen-delivery test: content forced") nc.classes; }
-    ) projected.nodes;
-    inherit terminals extraModules;
-  };
+  unforceableContent =
+    extraModules:
+    genDelivery.realize { inherit extraModules; } terminals {
+      nodes = builtins.mapAttrs (
+        _: nc:
+        nc // { classes = builtins.mapAttrs (_: _: throw "gen-delivery test: content forced") nc.classes; }
+      ) projected.nodes;
+    };
 
   forces = v: (builtins.tryEval (builtins.deepSeq v v)).success;
 
@@ -148,45 +150,23 @@ in
 
     # ── C6: declared content addressed to a class with no terminal refuses, as its extras do ──
     test-content-for-a-class-with-no-terminal-refuses = {
-      expr =
-        forces
-          (genDelivery.realize {
-            projected.nodes = undelivered;
-            inherit terminals;
-          }).a;
+      expr = forces (genDelivery.realize { } terminals { nodes = undelivered; }).a;
       expected = false;
     };
     # With NO terminal there is no class spine to own the check, so the root owns it.
     test-content-with-an-empty-terminal-set-refuses = {
-      expr = forces (
-        genDelivery.realize {
-          projected.nodes = undelivered;
-          terminals = { };
-        }
-      );
+      expr = forces (genDelivery.realize { } { } { nodes = undelivered; });
       expected = false;
     };
     # THE PLACEMENT: the check sits at the root, not on the class spines. Neither read below forces
     # a class spine — `or` on an absent key and `attrNames` read only the result's own spine — so a
     # check seq'd onto each `realized.<c>` leaves both reading the drop at exit 0.
     test-content-for-a-class-with-no-terminal-refuses-an-or-read = {
-      expr = forces (
-        (genDelivery.realize {
-          projected.nodes = undelivered;
-          inherit terminals;
-        }).d or "absent"
-      );
+      expr = forces ((genDelivery.realize { } terminals { nodes = undelivered; }).d or "absent");
       expected = false;
     };
     test-content-for-a-class-with-no-terminal-refuses-its-class-names = {
-      expr = forces (
-        builtins.attrNames (
-          genDelivery.realize {
-            projected.nodes = undelivered;
-            inherit terminals;
-          }
-        )
-      );
+      expr = forces (builtins.attrNames (genDelivery.realize { } terminals { nodes = undelivered; }));
       expected = false;
     };
     # POSITIVE CONTROL in the same run — the same instrument over the same terminals, with d's
@@ -200,29 +180,27 @@ in
     # The result's WHNF reads the projection's node keys and class sets (the content check), and
     # never a content list of a class that has a terminal, nor a terminal.
     test-result-spine-forces-no-class-content = {
-      expr = forces (builtins.attrNames (genDelivery.realize (unforceableContent { })));
+      expr = forces (builtins.attrNames (unforceableContent { }));
       expected = true;
     };
     # With an address as well: the node half of the address check stays on the class spine it guards.
     test-result-spine-with-an-address-forces-no-class-content = {
       expr = forces (
-        builtins.attrNames (
-          genDelivery.realize (unforceableContent {
-            a.n = [ { x = 1; } ];
-          })
-        )
+        builtins.attrNames (unforceableContent {
+          a.n = [ { x = 1; } ];
+        })
       );
       expected = true;
     };
     # POSITIVE CONTROL — the lists DO throw when a terminal's modules are forced.
     test-control-a-content-list-throws-when-forced = {
-      expr = forces (genDelivery.realize (unforceableContent { })).a.n.modules;
+      expr = forces (unforceableContent { }).a.n.modules;
       expected = false;
     };
     # POSITIVE CONTROL — reading a class spine through the same instrument DOES force the projection,
     # so the two cells above are not reading an instrument that cannot see the throw.
     test-control-a-class-spine-forces-the-projection = {
-      expr = forces (builtins.attrNames (genDelivery.realize (unforceableProjection { })).a);
+      expr = forces (builtins.attrNames (unforceableProjection { }).a);
       expected = false;
     };
   };
