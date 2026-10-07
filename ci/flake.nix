@@ -30,6 +30,7 @@
     # doctor its `resolve` (`genDeliveryWith`) to show the query is read, and read as a set.
     gen-scope.url = "github:sini/gen-scope";
     gen-scope.inputs.gen-prelude.follows = "gen-prelude";
+    gen-scope.inputs.gen-algebra.follows = "gen-algebra";
   };
 
   outputs =
