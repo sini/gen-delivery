@@ -1042,7 +1042,7 @@ let
           perNode = extraModules.${className};
         in
         if !(builtins.isAttrs perNode) then
-          throw "gen-delivery: realize: extraModules.${className} is not an attrset — extraModules is CLASS-MAJOR, { <class>.<node> = [ module ]; }; the node-keyed { <node> = [ module ]; } shape was retired because it reached every class's terminal"
+          throw "gen-delivery: realize: extraModules.${className} is not an attrset — extraModules is CLASS-MAJOR, { <class>.<node> = [ module ]; }"
         else if perNode != { } && !(terminals ? ${className}) then
           throw "gen-delivery: realize: extraModules.${className}.${builtins.head (builtins.attrNames perNode)} addresses class ${className}, which has no terminal — the extras would be dropped"
         else

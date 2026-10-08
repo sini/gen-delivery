@@ -62,10 +62,10 @@ let
     + "duplicates is not an order, and the LAST occurrence would decide, silently inverting the "
     + "declared precedence";
 
-  retiredNodeKeyedShape =
-    "gen-delivery: realize: extraModules.n is not an attrset — extraModules is CLASS-MAJOR, "
-    + "{ <class>.<node> = [ module ]; }; the node-keyed { <node> = [ module ]; } shape was retired "
-    + "because it reached every class's terminal";
+  notClassMajor =
+    c:
+    "gen-delivery: realize: extraModules.${c} is not an attrset — extraModules is CLASS-MAJOR, "
+    + "{ <class>.<node> = [ module ]; }";
 
   noDeclaredContent =
     "gen-delivery: realize: extraModules.a.m addresses a node with no declared a content — a delivery "
@@ -325,11 +325,17 @@ in
     };
 
     # ── THE ADDRESSED INLET: every address a point of the realization, or a refusal by name ──
-    # R0 — THE RETIRED NODE-KEYED SHAPE. The honest migration mistake: read as class `n`, it would be
-    # dropped silently. Refused at the root, so the result's own WHNF names it.
-    test-node-keyed-extras-refuse-as-the-retired-shape = {
+    # R0 — A CLASS VALUE THAT IS NOT AN ATTRSET. Read as class `n`, a list would be dropped silently.
+    # Refused at the root, so the result's own WHNF names it, and the refusal states the class-major
+    # shape and nothing else, whatever the key names: `n` (a node) and `a` (a genuine class) read
+    # the same message.
+    test-a-class-value-that-is-not-an-attrset-refuses-by-name = {
       expr = addressed { n = [ { x = 1; } ]; };
-      expectedError.msg = exactly retiredNodeKeyedShape;
+      expectedError.msg = exactly (notClassMajor "n");
+    };
+    test-a-genuine-class-value-that-is-not-an-attrset-refuses-by-name = {
+      expr = addressed { a = [ { x = 1; } ]; };
+      expectedError.msg = exactly (notClassMajor "a");
     };
     # R1 — the class has no terminal, so nothing realizes it.
     test-extras-for-a-class-with-no-terminal-refuse-by-name = {

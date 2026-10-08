@@ -67,13 +67,13 @@ rule `extent` obeys. Extras **supplement** a realization and never create one (A
 
 Every address must be a point of the realization, or it **REFUSES BY NAME**:
 
-| #   | condition                                                           | forced                    |
-| --- | ------------------------------------------------------------------- | ------------------------- |
-| R0  | `extraModules.<c>` is not an attrset — the retired node-keyed shape | at the root               |
-| R1  | a non-empty `extraModules.<c>` and no `terminals.<c>`               | at the root               |
-| R2  | `projected.nodes` has no `<n>`                                      | on `realized.<c>`'s spine |
-| R3  | `nodes.<n>.classes.<c>` is empty — `<c>` does not realize at `<n>`  | on `realized.<c>`'s spine |
-| R4  | `nodes.<n>.classes.<c>` is non-empty and no `terminals.<c>`         | at the root               |
+| #   | condition                                                          | forced                    |
+| --- | ------------------------------------------------------------------ | ------------------------- |
+| R0  | `extraModules.<c>` is not an attrset (extras are class-major)      | at the root               |
+| R1  | a non-empty `extraModules.<c>` and no `terminals.<c>`              | at the root               |
+| R2  | `projected.nodes` has no `<n>`                                     | on `realized.<c>`'s spine |
+| R3  | `nodes.<n>.classes.<c>` is empty — `<c>` does not realize at `<n>` | on `realized.<c>`'s spine |
+| R4  | `nodes.<n>.classes.<c>` is non-empty and no `terminals.<c>`        | at the root               |
 
 A per-class map with no nodes (`{ d = { }; }`) is no address. The check reads names, never an extra
 module. R2/R3 are refused at their OWNER's level: reading `realized.<c>` already forces the node keys

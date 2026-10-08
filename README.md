@@ -236,7 +236,7 @@ positional chain this merge has always been.
 coordinate: `extraModules.a.n` lands in `realized.a.n` and nowhere else. It is how a value crosses
 from one class to another — the caller adapts it and addresses it to the target class. Extras
 supplement a realization and never create one, so an address that names no point of the realization
-refuses by name: the retired node-keyed shape, a class with no terminal, an unprojected node, and a
+refuses by name: a class value that is not an attrset (extras are class-major), a class with no terminal, an unprojected node, and a
 node with no declared content for the class.
 
 Declared content is an address too. A node whose projection carries content for a class with no
