@@ -1,11 +1,12 @@
-# THE RECEIVER-ROOTED QUERY CERTIFIES THE WALK (den-hoag-htfv3-stage-c-graph-query-xm29n).
+# TWO RECEIVER-ROOTED QUERIES PRODUCE THE ELEMENT LIST (den-hoag-htfv3-stage-c-graph-query-xm29n,
+# den-hoag-rdzqb).
 #
-# `project` derives each node's membership and declared order with its walk over the materialised
-# projection (the instance relation), and runs gen-scope's `resolve` from the receiver over one
-# lifted graph: the answer set must equal the walk's delivered vertices or the node refuses. These
-# cells drive `project` through a DOCTORED `scope` whose `resolve` returns rewritten answers, so they
-# show the query is read and read as a set. The refusal messages are in `tests-error.nix`
-# (S1, an emptied query; S3, an over-listed relation).
+# `project` runs gen-scope's `resolve` twice per node: the membership query (M) from the receiver
+# over one lifted graph, whose answers read as a set are the node's projection, and the order query
+# (O) from `toJSON [ ]` over a scope whose vertex set is that projection, whose first-reach answers
+# are the element list. These cells drive `project` through a DOCTORED `scope` whose `resolve`
+# returns rewritten answers for one of the two, so they show M is read as a set and O as the order.
+# The refusal messages are in `tests-error.nix` (S1, an emptied query; S3, an over-listed relation).
 {
   genDeliveryWith,
   scope,
@@ -15,9 +16,9 @@
   ...
 }:
 let
-  # `scope` with `resolve`'s answers passed through `f`.
-  answersThrough =
-    f:
+  # `scope` with the answers of the queries rooted where `p` holds passed through `f`.
+  answersAt =
+    p: f:
     scope
     // {
       resolve =
@@ -25,8 +26,9 @@ let
         let
           r = scope.resolve o s from;
         in
-        r // { answers = f r.answers; };
+        if p from then r // { answers = f r.answers; } else r;
     };
+  isOrderRoot = from: from == builtins.toJSON [ ];
   fxWith =
     sc:
     import ../parametric-fixture.nix {
@@ -65,12 +67,18 @@ let
 in
 {
   flake.tests.projection-parity = {
-    # S2: the answers are read as a SET. Reversed answers give the same output on every node. GREEN
-    # on a tree that reads no query too, so it discriminates only "order taken from the answers"
-    # (RED: `bf6a04ca…` ≠ `a623aad1…`); S1 is its partner and discriminates "query absent".
-    test-permuted-answers-give-the-same-projection = {
-      expr = outputOf (fxWith (answersThrough reverse));
+    # O2: M's answers are read as a SET. Reversing them gives the same output on every node. GREEN
+    # on a tree that reads no query too, so it discriminates only "order taken from M"; O1 is its
+    # partner.
+    test-permuted-membership-answers-give-the-same-projection = {
+      expr = outputOf (fxWith (answersAt (from: !(isOrderRoot from)) reverse));
       expected = outputOf (fxWith scope);
+    };
+    # O1: O's answers ARE the order. Reversing them reverses `na`'s element ids in every class. RED
+    # on a producer that orders by anything but O's answers (the stage-B walk reads them not at all).
+    test-reversed-order-answers-reverse-the-delivery = {
+      expr = (outputOf (fxWith (answersAt isOrderRoot reverse))).open.na.ids;
+      expected = builtins.mapAttrs (_: reverse) (outputOf (fxWith scope)).open.na.ids;
     };
     # S4: the parametric fixture under both worlds is byte-identical to the walk-only projection
     # (gen-delivery a89dda5, the stage-B view). RED: an over-listed `reaches.na` (S3) reads

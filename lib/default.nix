@@ -23,7 +23,8 @@
 # native closed formal aborted past it.
 #
 # `scope` arrives the same way, as gen-assemble takes it: gen-scope's engine, the one resolution
-# calculus, through which `project` runs the receiver-rooted query that certifies each node's walk.
+# calculus, through which `project` runs the two receiver-rooted queries that produce each node's
+# element list.
 #
 # ── AND THE ORDERED FOLD IS NOT WRITTEN HERE ──
 # The contribution merge is `algebra.record.foldLayers`: an ordered layer list, least-specific
@@ -209,7 +210,7 @@ let
   edgeAspectRefusal =
     scope: a: iid:
     "gen-delivery: project: the instance relation's edge from '${scope}' lists instance '${iid}' under aspect '${a}', and it does not instantiate '${a}'";
-  # The view's malformed shapes, each read where the walk reads it (htfv3 §2.3's view doors).
+  # The view's malformed shapes, each read where O's edges read it (htfv3 §2.3's view doors).
   edgesNotAttrsRefusal =
     scope: v:
     "gen-delivery: project: the instance relation's edges from '${scope}' must be an attrset { <aspect> = [ <instance id> ]; }, got ${builtins.typeOf v}";
@@ -226,10 +227,10 @@ let
   declinedNotListRefusal =
     scope: v:
     "gen-delivery: project: the instance relation's declined aspects at '${scope}' must be a list of aspect ids, got ${builtins.typeOf v}";
-  # The walk derives membership and order; the query certifies that membership by refusal. Both read
-  # one materialised projection, so a vertex one holds and the other does not is a relation that
-  # lists an edge the declared include sites never walk (first arm), or a vertex the query withholds
-  # (second arm; unreachable while `marks` is empty).
+  # The membership query's answers are the order query's vertex set, and both read one materialised
+  # projection, so a vertex one holds and the other does not is a relation that lists an edge the
+  # declared include sites never reach (first arm), or a declared include site leading to a vertex
+  # the membership query withholds (second arm; unreachable while `marks` is empty).
   projectionParityRefusal =
     node: v: inQuery:
     "gen-delivery: project: node '${node}' "
@@ -258,10 +259,10 @@ let
   # Delivery is a relation, node delivers element, where an element is a named aspect or an instance
   # vertex (ADR-0010 §4(a); ADR-0012: one graph, two node kinds). `classes` is its positional
   # projection onto content and `elementIds` its projection onto identity: both read one list of
-  # reached elements (ADR-0012 clause 2, one walk, two materialised views), so their keys and
+  # reached elements (ADR-0012 clause 2, one list, two materialised views), so their keys and
   # positions agree by construction. A named aspect's id is its facts id, an instance's its vertex id
   # (each fan-out sibling its own), and inline content's its anonymous declaration's (den-hoag-8hlo3):
-  # `null` only for inline content that is no node, whose walk key is an address, never a name. One
+  # `null` only for inline content that is no node, whose key is an address, never a name. One
   # vertex two nodes reach is one id in both lists. `realize` reads neither.
   #
   # ── CONTENT IS COLLECTED BY AUTHORED CLASS AND KEYED BY DELIVERY CLASS ──
@@ -276,7 +277,7 @@ let
   # ── THE CLOSURE IS A RECEIVER-ROOTED QUERY, AND gen-aspects STATES ONLY ITS FACTS ──
   # ADR-0010 section 1: a collector is a receiver-rooted query over the aspect graph. It is rooted at
   # the node's members, in declared order, and follows gen-aspects' published `includeSitesOf`
-  # breadth-first (`builtins.genericClosure`; the order is a default, reversible):
+  # breadth-first, first reach (gen-scope `resolve`'s answer order; a default, reversible):
   #
   #   local    the target node, delivered once however many paths reach it (a diamond is two
   #            edges to one node; an include cycle between named aspects terminates);
@@ -287,21 +288,26 @@ let
   #   foreign  refused by name: a reference into a tree this one does not hold;
   #   sealed   refused by name: parametric content with no declaration id.
   #
-  # The walk is certified by a second reader of the same facts: gen-scope's `resolve`, rooted at the
-  # receiver over one lifted graph per call (`(members | reaches) (includes | nested)*`). Its answer
-  # set must equal the walk's delivered vertices, or the node refuses by name. The walk derives;
-  # the query certifies.
+  # TWO STRATA, both receiver-rooted queries through gen-scope's `resolve`:
+  #   M  membership: one lifted graph per call, shared by every receiver
+  #      (`(members | reaches) (includes | nested)*`). Its answers, read as a set, are the node's
+  #      projection S, materialised before O exists (ADR-0019's ordering input; ADR-0033 strata).
+  #   O  order: one scope per receiver, the include graph induced on S plus the content positions
+  #      that are no node, its edges the successor rule below (`members` at the root, `includes`
+  #      elsewhere, `members includes*`). Its first-reach answers ARE the element list.
+  # S decides no edge's existence: an edge of O leaving S refuses by name (THE PROJECTION-PARITY
+  # DOOR), and a vertex of S that O never reaches refuses too.
   #
   # ── A PARAMETRIC NODE IS DELIVERED THROUGH ITS INSTANCES (ADR-0010 §4(a); van Antwerpen 2018 §2.5) ──
-  # A guard leaf is never a walk item: its declaration's members exist only where its condition
-  # holds, so a static walk through it would deliver them unconditionally. Where it is reached it is
+  # A guard leaf is never an item: its declaration's members exist only where its condition
+  # holds, so a static descent through it would deliver them unconditionally. Where it is reached it is
   # replaced by the instances the caller's materialised relation (`instances`, gen-aspects'
   # `instancesFor`) lists at the reaching scope: `reaches.<node>.<id>` for the projected node,
   # `nestedAt.<node>.<iid>.<id>` inside an instance read at that node (den-hoag-8g2rn: a nested
   # include fans out at the meet of its vertex and the reading node, so its edges are per node). An instance item delivers the vertex's `entry` (σ applied
   # per field by the producer) and follows that entry's own `includes`. `instantiates.<iid> == [ id ]`
   # is a well-formedness check that the producer's grouping agrees with the `I` edge; it is not a
-  # member resolution. A static node is always walked at node scope, wherever it is reached.
+  # member resolution. A static node is always reached at node scope, wherever it is reached from.
   #
   # THE EMPTY REACH, THREE ARMS (den-hoag-n8wb5). The relation publishes beside its edges the walked
   # guards whose condition was decided FALSE (`declined.reaches.<node>`,
@@ -331,11 +337,11 @@ let
   # An instance id names its declaration and formals, never class content. Under a declared
   # coordinate set, (i) and (ii) deliver nothing at rc 0.
   #
-  # A node's walk key is its id, and so is an anonymous declaration's (gen-aspects' facts node for
+  # A node's key is its id, and so is an anonymous declaration's (gen-aspects' facts node for
   # static content, `<iid>/includes/<i>` for an applied body's, den-hoag-8hlo3): inline content is
   # delivered as the node it is. An inline site that is no node (a named element, content past the
   # depth budget) keys `[ anchor ] ++ positionPath`, an ADDRESS into the anchor node's published
-  # declaration and never a name for the content: it is generated exactly once (by the one item
+  # declaration and never a name for the content: it is generated exactly once (in the one content tree
   # holding that position), so it never decides a merge, it is rendered only inside a refusal, and
   # it never leaves this function. The classification is gen-aspects'
   # (`resolve`), read here and never re-run. A member is an identifier, resolved through the
@@ -412,13 +418,14 @@ let
             else if (instances.instantiates.${iid} or null) != [ id ] then
               throw (edgeAspectRefusal scope id iid)
             else
-              {
-                key = [ iid ];
-                id = iid;
-                pos = [ ];
-                inst = iid;
-              }
+              instItem iid
           ) ids;
+      instItem = iid: {
+        key = [ iid ];
+        id = iid;
+        pos = [ ];
+        inst = iid;
+      };
       # Every reach of a node routes here: a static node is an item at node scope, a parametric one
       # is its instances at the reaching scope, or a refusal.
       reach =
@@ -433,66 +440,97 @@ let
       anchorOf = item: item.anchor or item.id;
       hostOf = item: item.host or item.id;
       baseOf = item: item.base or [ ];
+      itemSites =
+        item:
+        if item.pos != [ ] then
+          item.sites
+        else if item.inst != null then
+          sitesOfInstance item.inst instances.vertices.${item.inst}.entry
+        else
+          facts.includeSitesOf.${item.id};
+      # The item content site `i` of `item` holds, carrying the host and position its refusals name.
+      contentItem =
+        item: i: site:
+        let
+          pos = item.pos ++ [ i ];
+        in
+        if site ? target && facts.nodeData ? ${site.target} then
+          # A static anonymous declaration is a node: reached, and delivered, as one.
+          nodeItem site.target
+          // {
+            host = hostOf item;
+            base = baseOf item ++ pos;
+          }
+        else
+          # An applied body's content (its id instance-relative), or an inline position that is no
+          # node (no `target`: a named element, content past the depth budget), which keeps its
+          # address and whose own sites refuse where read.
+          {
+            key = if site ? target then [ site.target ] else [ (anchorOf item) ] ++ pos;
+            id = site.target or null;
+            anchor = anchorOf item;
+            host = hostOf item;
+            base = baseOf item;
+            inherit (item) inst;
+            inherit pos;
+            inherit (site) sites;
+          };
+      # The successor rule, in site order: O's `includes` edges.
       succ =
         nodeName: item:
         builtins.concatLists (
-          prelude.imap0
-            (
-              i: site:
-              let
-                pos = item.pos ++ [ i ];
-                named = if item.id == null then anchorOf item else item.id;
-                hostAt = at (baseOf item ++ pos);
-              in
-              if site.kind == "local" then
-                reach nodeName item.inst site.target
-              else if site.kind == "content" && site ? target && facts.nodeData ? ${site.target} then
-                # A static anonymous declaration is a node: reached, and delivered, as one.
-                [
-                  (
-                    nodeItem site.target
-                    // {
-                      host = hostOf item;
-                      base = baseOf item ++ pos;
-                    }
-                  )
-                ]
-              else if site.kind == "content" then
-                # An applied body's content (its id instance-relative), or an inline position that is
-                # no node (no `target`: a named element, content past the depth budget), which keeps
-                # its address and whose own sites refuse where read.
-                [
-                  {
-                    key = if site ? target then [ site.target ] else [ (anchorOf item) ] ++ pos;
-                    id = site.target or null;
-                    anchor = anchorOf item;
-                    host = hostOf item;
-                    base = baseOf item;
-                    inherit (item) inst;
-                    inherit pos;
-                    inherit (site) sites;
-                  }
-                ]
-              else if site.kind == "foreign" then
-                throw (foreignIncludeRefusal named (hostOf item) hostAt site.ref)
-              else
-                throw (sealedIncludeRefusal named (hostOf item) hostAt)
-            )
-            (
-              if item.pos != [ ] then
-                item.sites
-              else if item.inst != null then
-                sitesOfInstance item.inst instances.vertices.${item.inst}.entry
-              else
-                facts.includeSitesOf.${item.id}
-            )
+          prelude.imap0 (
+            i: site:
+            let
+              named = if item.id == null then anchorOf item else item.id;
+              hostAt = at (baseOf item ++ item.pos ++ [ i ]);
+            in
+            if site.kind == "local" then
+              reach nodeName item.inst site.target
+            else if site.kind == "content" then
+              [ (contentItem item i site) ]
+            else if site.kind == "foreign" then
+              throw (foreignIncludeRefusal named (hostOf item) hostAt site.ref)
+            else
+              throw (sealedIncludeRefusal named (hostOf item) hostAt)
+          ) (itemSites item)
         );
-      # ── THE ONE GRAPH, LIFTED, AND THE RECEIVER-ROOTED QUERY THAT CERTIFIES THE WALK ──
+      # A declaration's content positions, enumerated by structural recursion over its own sub-values
+      # in site order and through its anonymous declarations, so each record carries the host and
+      # position the item reaching it carries. It crosses no `local` site and reads no edge (an
+      # instance base reads its vertex's `entry`).
+      contentTree =
+        item:
+        builtins.concatLists (
+          prelude.imap0 (
+            i: site:
+            if site.kind == "content" then
+              let
+                c = contentItem item i site;
+              in
+              [ c ] ++ contentTree c
+            else
+              [ ]
+          ) (itemSites item)
+        );
+      # Lazy per id and shared by every receiver: a named node's tree is built at most once per call.
+      staticTree = builtins.mapAttrs (id: _: contentTree (nodeItem id)) facts.nodeData;
+      # An anonymous declaration: a node its parent declares at a content site. Its records come from
+      # its host's tree, never from a tree of its own, which would name it as its own host. Lazy per
+      # id and shared by every receiver, as `staticTree` is.
+      isAnon = builtins.mapAttrs (
+        v: _:
+        let
+          p = facts.parentOf.${v} or null;
+        in
+        p != null
+        && builtins.any (s: s.kind == "content" && (s.target or null) == v) facts.includeSitesOf.${p}
+      ) facts.nodeData;
+      # ── STRATUM M: THE ONE GRAPH, LIFTED, AND THE RECEIVER-ROOTED MEMBERSHIP QUERY ──
       # One evaluated `scope` per `project` call, shared by every receiver (gen-bind's crossing
       # adapter set lifts the same way), queried through the one calculus, gen-scope's `resolve`
-      # (ADR-0006, ADR-0010 §1). The query does not decide membership: the walk above derives
-      # membership and order over the materialised projection, and the query's answer set must equal
-      # the walk's vertex set or the node refuses (THE PROJECTION-PARITY DOOR, below).
+      # (ADR-0006, ADR-0010 §1). Its answer set is the node's projection, and the vertex set of the
+      # node's order scope (stratum O, below).
       # Vertices: each receiver (keyed `toJSON [ <node> ]`, a key space no hash identity enters),
       # each facts node (anonymous declarations included), each instance OCCURRENCE (keyed
       # `toJSON [ <node> <iid> ]`, one per node that reaches the instance), and each applied body's
@@ -504,7 +542,7 @@ let
       #            targets; at a facts node also the guard declarations reached at node scope)
       #   nested   occurrence → the occurrences, at its node, of the instances the relation lists
       #            inside it (`nestedAt.<node>.<iid>`)
-      # Edges are total over malformed relation shapes: the named doors fire in the ordered fold.
+      # Edges are total over malformed relation shapes: the named doors fire in O's edges.
       rid = n: builtins.toJSON [ n ];
       isVertex = v: builtins.isString v && instances.vertices ? ${v};
       localTargets =
@@ -647,8 +685,8 @@ let
         ];
         expression = "(members | reaches) (includes | nested)*";
       };
-      # The query's answers, read as a SET: nothing below orders over them, so any permutation of
-      # `resolve`'s answers gives byte-identical output.
+      # The query's answers, read as a SET: nothing orders over them (O orders), so any permutation
+      # of M's answers gives byte-identical output.
       reachedBy =
         nodeName:
         builtins.listToAttrs (
@@ -662,6 +700,96 @@ let
               dataFilter = _: true;
             } lifted (rid nodeName)).answers
         );
+      # ── STRATUM O: ONE ORDER SCOPE PER RECEIVER, OVER ITS PROJECTION ──
+      # The include graph induced on S (M's answers for the node) plus the content positions that are
+      # no node, keyed `toJSON item.key`. Bases are S's named non-guard nodes and instance vertices,
+      # each with its content tree. A position that is a node enters only if S holds it; one that is
+      # no node has no id and enters with its anchor. Every key is generated once: a named node is a
+      # base and never content, an anonymous declaration and a position appear only in their one
+      # host's tree, and an applied body's content only in its instance's. `listToAttrs` would keep
+      # the first of two equal keys silently, so a record's host never depends on which came first.
+      ik = item: builtins.toJSON item.key;
+      tableFor =
+        S:
+        builtins.listToAttrs (
+          map
+            (i: {
+              name = ik i;
+              value = i;
+            })
+            (
+              builtins.filter (i: i.id == null || S ? ${i.id}) (
+                builtins.concatMap (
+                  v:
+                  if facts.nodeData ? ${v} then
+                    if aspects.isGuardLeaf facts.nodeData.${v} || isAnon.${v} then
+                      [ ]
+                    else
+                      [ (nodeItem v) ] ++ staticTree.${v}
+                  else if isVertex v then
+                    [ (instItem v) ] ++ contentTree (instItem v)
+                  else
+                    [ ]
+                ) (builtins.attrNames S)
+              )
+            )
+        );
+      rootK = builtins.toJSON [ ];
+      # The calculus takes letters in alphabet order at each vertex, so the root's member reaches
+      # take one letter and every other vertex's site-ordered successors the other.
+      orderWf = scope.wellFormed {
+        alphabet = [
+          "members"
+          "includes"
+        ];
+        expression = "members includes*";
+      };
+      # The node's element list: O's first-reach answers from the root, mapped to their records.
+      # Its edges are the member reaches, in declared order, and `succ`, whose doors fire from these
+      # edge reads. An edge leaving S refuses by the parity door's second arm; the start keys are
+      # forced before the answers are read, so an emptied S refuses even where an injected `scope`
+      # never runs O's edges.
+      ordered =
+        nodeName: inst: S:
+        let
+          table = tableFor S;
+          keyIn =
+            item:
+            let
+              k = ik item;
+            in
+            if table ? ${k} then
+              k
+            else
+              throw (projectionParityRefusal nodeName (if item.id != null then item.id else k) false);
+          startKeys = map keyIn (
+            builtins.concatMap (k: reach nodeName null (memberId nodeName k)) (inst.aspects or [ ])
+          );
+          g =
+            scope.eval
+              {
+                parseParent = _: null;
+              }
+              {
+                children = _: _: { };
+                marks = _: _: [ ];
+                edges-members = _: v: if v == rootK then startKeys else [ ];
+                edges-includes = _: v: if v == rootK then [ ] else map keyIn (succ nodeName table.${v});
+              }
+              (
+                scope.buildRoots {
+                  parentGraph = scope.vertices ([ rootK ] ++ builtins.attrNames table);
+                }
+              );
+        in
+        builtins.deepSeq startKeys (
+          map (a: table.${a.node}) (
+            (scope.resolve {
+              wf = orderWf;
+              dataFilter = _: true;
+            } g rootK).answers
+          )
+        );
       # The entry an item delivers: a node's value or an instance's entry, or the element at the
       # site's position inside its anchor's `includes`, descending through each level's `includes`.
       contentOf =
@@ -673,40 +801,30 @@ let
     builtins.mapAttrs (
       nodeName: inst:
       let
-        # The walk: membership AND declared order (shortlex over declared positions), over the
-        # materialised projection ADR-0019 names as the ordering input. It is permanent: on a lift
-        # independent of the receiver, a node-scope instance sits one `reaches` step from the root,
-        # so no enumeration of the query's answers places it at its include site.
-        walk = builtins.genericClosure {
-          startSet = builtins.concatMap (k: reach nodeName null (memberId nodeName k)) (inst.aspects or [ ]);
-          operator = succ nodeName;
-        };
+        # M's projection, then O's element list over it (declared order: shortlex over declared
+        # positions).
         inQuery = reachedBy nodeName;
-        inFold = builtins.listToAttrs (
+        elements = ordered nodeName inst inQuery;
+        inOrder = builtins.listToAttrs (
           map (i: {
             name = i.id;
             value = null;
-          }) (builtins.filter (i: i.id != null) walk)
+          }) (builtins.filter (i: i.id != null) elements)
         );
         delivers =
           v:
           (instances.vertices ? ${v})
           || instContent ? ${v}
           || (facts.nodeData ? ${v} && !(aspects.isGuardLeaf facts.nodeData.${v}));
-        # THE PROJECTION-PARITY DOOR: the query certifies the walk's membership by refusal. Guards
-        # and inline positions that are no node are not delivered vertices, so neither side counts
-        # them; an anonymous declaration is one, so both do.
+        # THE PROJECTION-PARITY DOOR, folded into O. Its second arm fires at O's edges (`keyIn`); its
+        # first here, where a delivered vertex of S is absent from O's answers. Guards and inline
+        # positions that are no node are not delivered vertices, so neither side counts them; an
+        # anonymous declaration is one, so both do.
         _parity =
           let
-            extra = builtins.filter (v: delivers v && !(inFold ? ${v})) (builtins.attrNames inQuery);
-            missing = builtins.filter (v: !(inQuery ? ${v})) (builtins.attrNames inFold);
+            extra = builtins.filter (v: delivers v && !(inOrder ? ${v})) (builtins.attrNames inQuery);
           in
-          if extra != [ ] then
-            throw (projectionParityRefusal nodeName (builtins.head extra) true)
-          else if missing != [ ] then
-            throw (projectionParityRefusal nodeName (builtins.head missing) false)
-          else
-            null;
+          if extra != [ ] then throw (projectionParityRefusal nodeName (builtins.head extra) true) else null;
         reached = builtins.seq _parity (
           map (
             item:
@@ -718,7 +836,7 @@ let
               classes = deliveryClassesOf cnf entry;
               eid = item.id;
             }
-          ) walk
+          ) elements
         );
         authored = dedup (builtins.concatMap (r: r.classes) reached);
         # Per delivery class: its one authored class and the reached elements carrying it, in

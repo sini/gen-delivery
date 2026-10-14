@@ -55,7 +55,7 @@ chain whose only statement anywhere was a gloss in a header comment. It was comp
 
 ### the include closure
 
-A node receives the content of its members **and of everything they include**. `project` walks
+A node receives the content of its members **and of everything they include**. `project` follows
 gen-aspects' published include sites (`graphFacts`' `includeSitesOf`) breadth-first from the node's
 members, in declared order:
 
@@ -73,7 +73,7 @@ members, in declared order:
   node, the instances `reaches.<node>.<aspect>` lists; inside an instance, those the relation lists
   for it AT THAT NODE, `nestedAt.<node>.<instance>.<aspect>` (a nested include fans out at the meet
   of its vertex and the reading node, so one shared vertex has nested edges per node). Each instance delivers its vertex's `entry`, and its includes are
-  followed the same way. A static aspect is always walked at node scope, wherever it is reached.
+  followed the same way. A static aspect is always reached at node scope, wherever it is reached from.
   `project` reads the relation and never mints an instance;
 - where the relation lists no instance, the reach reads the relation's **decision**, `declined`: a
   guard the relation declined there (its condition decided FALSE at every tuple tried) **delivers
@@ -100,31 +100,39 @@ another tree that walks the same id: one that decides it FALSE delivers nothing,
 an instance delivers that tree's content, both at rc 0. Every `project` call carrying `instances`
 forces the whole relation at its root, a `bindings` read included.
 
-`instances` refuses by name when it is not the five-field record `{ vertices; instantiates; reaches; nestedAt; declined = { reaches; nestedAt; }; }` of attrsets (a relation from an older gen-aspects, `nested` keyed by vertex alone, is refused, never read as nothing declined), and where the walk reads it: an edge set, edge list or declined list of the wrong
+`instances` refuses by name when it is not the five-field record `{ vertices; instantiates; reaches; nestedAt; declined = { reaches; nestedAt; }; }` of attrsets (a relation from an older gen-aspects, `nested` keyed by vertex alone, is refused, never read as nothing declined), and where the order query's edges read it: an edge set, edge list or declined list of the wrong
 type, an id that is not a string, an id with no vertex, a vertex without an attrset `entry`, and an
 instance listed under an aspect its `instantiates` edge does not name.
 
-**The query certifies the walk.** The walk above derives each node's membership and its declared
-order over the instance relation, the materialised projection gen-aspects publishes. Beside it,
-`project` runs a receiver-rooted query through the one resolution calculus, gen-scope's `resolve`
-with `(members | reaches) (includes | nested)*` in mode `reachable`, over one graph lifted per call
-from `graphFacts` and the instance relation, in which an instance is lifted once per node that reaches it
-(an occurrence `[ node iid ]`), so the lift is linear and its `nested` edges are the node's. The query's answers are read as a set, so their order
-never reaches the output, and that set must equal the walk's delivered vertices or the node
-**refuses by name** (the projection-parity door): either the relation lists an instance the node's
-include sites never reach (minted over other members or another tree), or the walk delivers a
-vertex the query never reaches. The query certifies membership; it does not decide it, and the walk
-is permanent: on a graph shared by every receiver, a node-scope instance hangs off the receiver, so
-no enumeration of answers can place it at its include site. An anonymous declaration is a vertex
-like any node (an applied body's content one vertex shared by its instance's occurrences), so the
-door counts it; inline content that is no node is not a vertex, and the walk delivers it at its
+**Two queries produce the element list.** Both are receiver-rooted queries through the one
+resolution calculus, gen-scope's `resolve` in mode `reachable`, and both read the instance relation,
+the materialised projection gen-aspects publishes.
+
+- **Membership.** `(members | reaches) (includes | nested)*` over one graph lifted per call from
+  `graphFacts` and the instance relation, in which an instance is lifted once per node that reaches
+  it (an occurrence `[ node iid ]`), so the lift is linear and its `nested` edges are the node's. Its
+  answers, read as a set, are the node's projection: their order never reaches the output.
+- **Order.** `members includes*` over one scope per node whose vertices are that projection, plus
+  the inline positions that are no node. Its edges are the node's members in declared order, then
+  each vertex's include sites in site order, and its answers in first-reach order are the node's
+  element list. The projection is complete before this scope exists, and it bounds what the scope
+  declares without removing any edge.
+
+Where the two disagree the node **refuses by name** (the projection-parity door): either the
+relation lists an instance the node's include sites never reach (minted over other members or
+another tree), or an include site leads to a vertex the membership query never reaches. A shared
+graph cannot carry the order by itself, because a node-scope instance hangs off the receiver rather
+than its include site, so the order query is per node. An anonymous declaration is a vertex like any
+node (an applied body's content one vertex shared by its instance's occurrences), so the door
+counts it; inline content that is no node is not a vertex, and the order query delivers it at its
 position.
 
 **The price, stated.** On a node that reaches a static diamond, a node-scope instance and a nested
-one, reading every node's `classes` and `elementIds` costs about twice the walk alone: 2,089 → 4,138
-thunks per node (×1.98, host Nix). Reading one node costs 722 → 742 (the lift's vertex list). That
-is the graph layer only; an entity's class fixpoint, which this does not touch, dominates its cost.
-gen-delivery is not yet a member of the hub's perf bench, so no bench row measures this.
+one, reading every node's `classes` and `elementIds` costs 5,453 thunks per node (host Nix;
+Determinate identical, Lix within 0.4%), linear in the node count. Reading one node costs 925 per node of the call (the
+membership lift's vertex list) plus 1,432 for its order query. That is the graph layer only; an
+entity's class fixpoint, which this does not touch, dominates its cost. gen-delivery is not yet a
+member of the hub's perf bench, so no bench row measures this.
 
 **Element identity.** Each node entry carries `elementIds = { <delivery class> = [ <id or null> … ]; }`
 beside `classes`, with the same keys and, per class, one entry per delivered module at its position:
@@ -133,7 +141,7 @@ vertex id, and inline content's is its anonymous declaration's id; it is `null` 
 content that is no node (a named literal, content past the depth budget), whose position is an
 address, not a name. Delivery is the
 relation *node delivers element*, where an element is a named aspect or an instance (van Antwerpen
-2018's instantiation scopes), and `classes` and `elementIds` are its two projections over one walk,
+2018's instantiation scopes), and `classes` and `elementIds` are its two projections over one element list,
 so they cannot disagree; one instance that two nodes reach is one id in both nodes' lists, which is
 how shared evaluation is observed. `realize` reads only `classes`.
 

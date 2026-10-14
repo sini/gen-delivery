@@ -151,8 +151,8 @@ let
   declinedNotList =
     scope: t:
     "gen-delivery: project: the instance relation's declined aspects at '${scope}' must be a list of aspect ids, got ${t}";
-  # THE PROJECTION-PARITY DOOR's two arms (den-hoag-htfv3-stage-c-graph-query-xm29n). The vertex
-  # named is the least of the ones in dispute.
+  # THE PROJECTION-PARITY DOOR's two arms (den-hoag-htfv3-stage-c-graph-query-xm29n). The first
+  # names the least vertex in dispute; the second the first member reach that leaves the projection.
   parity =
     node: v: inQuery:
     "gen-delivery: project: node '${node}' "
@@ -452,6 +452,57 @@ in
         sealedInlineInclude "a/includes/[\"a:3\",\"aspects\",\"a\",\"includes\",0]" "0.1"
       );
     };
+    # Two anonymous levels down, the host is still the aspect the content was written in, and the
+    # path runs from it: the inner declaration's record is the one its host's content reaches.
+    test-doubly-nested-sealed-guard-include-names-the-host = {
+      expr =
+        closureClasses
+          [ "a" ]
+          [
+            {
+              aspects.a.includes = [
+                {
+                  nixos.marks = [ "i" ];
+                  includes = [
+                    {
+                      nixos.marks = [ "j" ];
+                      includes = [ hostGuard ];
+                    }
+                  ];
+                }
+              ];
+            }
+          ];
+      expectedError.msg = exactly (
+        sealedInlineInclude "a/includes/[\"a:3\",\"aspects\",\"a\",\"includes\",0,\"imports\",0,\"includes\",0]" "0.0.0"
+      );
+    };
+    # A named element (a position, no node) inside an anonymous declaration: the refusal names the
+    # declaration, then the aspect it was written in, with the path from that aspect.
+    test-sealed-guard-in-a-named-element-inside-inline-content-names-the-host = {
+      expr =
+        closureClasses
+          [ "a" ]
+          [
+            {
+              aspects.a.includes = [
+                {
+                  nixos.marks = [ "i" ];
+                  includes = [
+                    {
+                      name = "t";
+                      nixos.marks = [ "t" ];
+                      includes = [ hostGuard ];
+                    }
+                  ];
+                }
+              ];
+            }
+          ];
+      expectedError.msg = exactly (
+        sealedInlineInclude "a/includes/[\"a:3\",\"aspects\",\"a\",\"includes\",0]" "0.0.0"
+      );
+    };
     test-parametric-node-names-it-and-the-interim = {
       expr =
         closureClasses
@@ -489,27 +540,14 @@ in
     };
 
     # ── THE PROJECTION-PARITY DOOR ──
-    # S1: an emptied query refuses by the second arm, naming the least vertex `na`'s walk delivers:
-    # `web`, `ha`, and the instances the relation lists at `na` and inside them. The expectation reads
-    # the facts and the relation, never `project`, so a broken projection reds this cell alone.
-    # RED (the walk alone, no query read): `na` delivers `[ web, inst ×4, ha ]` at rc 0.
+    # S1 (O4): an emptied query refuses by the second arm, naming the first member reach that leaves
+    # the projection: `web`, `na`'s first member. The expectation reads the facts, never `project`,
+    # so a broken projection reds this cell alone. RED (no query read): `na` delivers
+    # `[ web, inst ×4, ha ]` at rc 0; RED (the start keys not forced before the answers are read):
+    # the expression evaluates without error.
     test-emptied-query-names-the-parity-door = {
       expr = fxEmptied.withRel.nodes.na.elementIds;
-      expectedError.msg =
-        let
-          listedIn = e: builtins.concatLists (builtins.attrValues e);
-          atNa = listedIn fx.rel.reaches.na;
-        in
-        exactly (
-          parity "na" (least (
-            [
-              (fx.factIdOf "web")
-              (fx.factIdOf "ha")
-            ]
-            ++ atNa
-            ++ builtins.concatMap (i: listedIn (fx.rel.nestedAt.na.${i} or { })) atNa
-          )) false
-        );
+      expectedError.msg = exactly (parity "na" (fx.factIdOf "web") false);
     };
     # S3: an instance `reaches.na` lists and `na`'s include sites never reach refuses by the first
     # arm, naming the least over-listed vertex (`ei@nei` or an instance nested in it). RED (the walk
