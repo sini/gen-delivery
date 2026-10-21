@@ -443,8 +443,9 @@ in
     };
   };
 
-  # K1 and K3 through `project`. Named content is delivered at its position, exactly as before, by
-  # every route to one named site; a host reaching none of it (`y`, which reaches only `c`) is
+  # K1 and K3 through `project`. Named content is delivered as its class's node (gen-aspects
+  # den-hoag-qxip5, Q5): one value included twice, or from two modules, is one node, delivered once,
+  # and a factory's two contents are two; a host reaching none of it (`y`, which reaches only `c`) is
   # untouched. An unnamed element writing `meta.loc` refuses at the host that reaches it, and only
   # there. RED (named content keyed into the node set): every named arm's `x` and `y` REFUSED; (the
   # stamp skips an authored `meta.loc`): `forgeLoc`'s `y` REFUSED, the node set refusing whole.
@@ -530,10 +531,7 @@ in
       };
       expected = {
         namedDup = {
-          x = [
-            "t"
-            "t"
-          ];
+          x = [ "t" ];
           y = [ "c" ];
         };
         namedFactory = {
@@ -544,10 +542,7 @@ in
           y = [ "c" ];
         };
         namedTwoMods = {
-          x = [
-            "t"
-            "t"
-          ];
+          x = [ "t" ];
           y = [ "c" ];
         };
         forgeLoc = {

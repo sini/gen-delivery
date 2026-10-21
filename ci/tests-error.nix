@@ -477,9 +477,10 @@ in
         sealedInlineInclude "a/includes/[\"a:3\",\"aspects\",\"a\",\"includes\",0,\"imports\",0,\"includes\",0]" "0.0.0"
       );
     };
-    # A named element (a position, no node) inside an anonymous declaration: the refusal names the
-    # declaration, then the aspect it was written in, with the path from that aspect.
-    test-sealed-guard-in-a-named-element-inside-inline-content-names-the-host = {
+    # A named element inside an anonymous declaration is its class's node (gen-aspects den-hoag-qxip5),
+    # which nests under no host (its key carries none): the refusal names the class, whose §2 key spells
+    # the `name`'s position and file (a store path, matched by shape), and the position inside it.
+    test-sealed-guard-in-a-named-element-inside-inline-content-names-its-class = {
       expr =
         closureClasses
           [ "a" ]
@@ -499,9 +500,17 @@ in
               ];
             }
           ];
-      expectedError.msg = exactly (
-        sealedInlineInclude "a/includes/[\"a:3\",\"aspects\",\"a\",\"includes\",0]" "0.0.0"
-      );
+      expectedError.msg =
+        "^"
+        + lib.escapeRegex "gen-delivery: project: aspect '@/includes/t@"
+        + "[0-9]+:[0-9]+:[^']*tests-error\\.nix"
+        + lib.escapeRegex (
+          "' carries at include position 0 an element that is "
+          + "neither a reference to an aspect nor inline aspect content: a guard there is not a declared "
+          + "aspect, so the instance relation can hold no instance of it (declare it as a named aspect and "
+          + "include it by key), and any other value (a list, a number) is not an aspect"
+        )
+        + "$";
     };
     test-parametric-node-names-it-and-the-interim = {
       expr =
