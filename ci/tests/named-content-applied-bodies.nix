@@ -440,4 +440,89 @@ in
         };
       };
     };
+
+  # D5. A value another evaluation stamped is a sighting of THIS relation, sited at its root path. `p`'s
+  # two contents, each stamped by its own evaluation at one declaration address (`st2`'s include 0), reach
+  # host `z` through the context route beside a static taker of a third: three classes at one key, so
+  # each id carries its least site. The stamp's address is foreign to this tree and the same for both,
+  # so a site read off the stamp names the two applied classes alike and `z` keeps one of them. RED an
+  # applied site that keeps the stamp's address (gen-aspects mutants enclsite, stampsite): `z` receives
+  # `[ "s" "a" ]` under two ids.
+  flake.tests.named-content-applied-bodies.test-two-stamps-at-one-foreign-address-stay-two-classes =
+    let
+      mkp = m: {
+        name = "p";
+        T.marks = [ m ];
+      };
+      stamped = m: builtins.head (ev [ { aspects.st2.includes = [ (mkp m) ]; } ]).aspects.st2.includes;
+      vals = {
+        x = stamped "a";
+        y = stamped "b";
+        z.includes = [
+          (stamped "a")
+          (stamped "b")
+        ];
+      };
+      members = {
+        x = [ "g" ];
+        y = [ "g" ];
+        z = [
+          "g"
+          "st"
+        ];
+      };
+      values = ev [
+        {
+          aspects.st.includes = [ (mkp "s") ];
+          aspects.g = guard (pred.has "host") { includes = [ (term.readCtx "host" [ ]) ]; };
+          hosts = builtins.mapAttrs (_: ms: { aspects = ms; }) members;
+        }
+      ];
+      p = (genDeliveryWith scope).project {
+        instances =
+          aspects.instancesFor cnf values.aspects
+            {
+              suppliers = builtins.listToAttrs (
+                map (h: {
+                  name = src h;
+                  value.host = vals.${h};
+                }) (builtins.attrNames vals)
+              );
+              containment = { };
+            }
+            (
+              builtins.mapAttrs (h: v: {
+                members = v.aspects;
+                sources.host = src h;
+              }) values.hosts
+            );
+        selectNodes = _: values.hosts;
+      } cnf values;
+      ids = builtins.filter (
+        i: builtins.isString i && builtins.match "@/includes/p@.*" i != null
+      ) p.nodes.z.elementIds.T;
+    in
+    {
+      expr = try {
+        marks = builtins.concatMap marksIn p.nodes.z.classes.T;
+        ids = builtins.length (
+          builtins.attrNames (
+            builtins.listToAttrs (
+              map (n: {
+                name = n;
+                value = null;
+              }) ids
+            )
+          )
+        );
+      };
+      expected = {
+        marks = [
+          "s"
+          "a"
+          "b"
+        ];
+        ids = 3;
+      };
+    };
 }
