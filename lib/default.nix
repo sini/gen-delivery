@@ -352,8 +352,9 @@ let
       # One facts record per `project` call: each node's sites are a thunk in it, resolved at most
       # once however many nodes reach that node.
       facts = aspects.graphFacts cnf (values.aspects or { });
-      # An applied instance body's sites, its anonymous content keyed under the instance id.
-      sitesOfInstance = aspects.includeSitesOfInstance cnf (values.aspects or { });
+      # An applied instance body's sites, its anonymous content keyed under the instance id and its
+      # named values classed across the static tree and every vertex of the relation.
+      sitesOfInstance = aspects.includeSitesOfInstance cnf (values.aspects or { }) instances;
       at = pos: prelude.concatStringsSep "." (map toString pos);
 
       memberId =
@@ -445,7 +446,7 @@ let
         if item.pos != [ ] then
           item.sites
         else if item.inst != null then
-          sitesOfInstance item.inst instances.vertices.${item.inst}.entry
+          sitesOfInstance item.inst
         else
           facts.includeSitesOf.${item.id};
       # The item content site `i` of `item` holds, carrying the host and position its refusals name.
@@ -556,26 +557,52 @@ let
           else
             [ ]
         ) sites;
-      # Every applied body's anonymous content, by id: its sites. Content that is no node holds
-      # none below it (gen-aspects keys nothing under a target-less site).
-      contentSitesOf = builtins.concatMap (
-        s:
-        if s.kind == "content" && s ? target then
-          [
-            {
-              name = s.target;
-              value = s.sites;
-            }
-          ]
-          ++ contentSitesOf s.sites
-        else
-          [ ]
-      );
+      # Every applied body's anonymous content, by its STRUCTURAL address `<iid>/includes/<i>…` (an
+      # instance id's prefix, disjoint from facts ids, occurrences and receivers): its sites and its
+      # node id. The lift is
+      # built over addresses, which read the classifier's structure only, so listing every vertex's
+      # content forces no class decision; the id is read where an answer is named (`reachedBy`), for
+      # the content a receiver reaches. Content that is no node holds none below it (gen-aspects keys
+      # nothing under a target-less site).
+      contentSitesOf =
+        addr: sites:
+        builtins.concatLists (
+          prelude.imap0 (
+            i: s:
+            let
+              a = "${addr}/includes/${toString i}";
+            in
+            if s.kind == "content" && s ? target then
+              [
+                {
+                  name = a;
+                  value = s;
+                }
+              ]
+              ++ contentSitesOf a s.sites
+            else
+              [ ]
+          ) sites
+        );
       instContent = builtins.listToAttrs (
-        builtins.concatMap (
-          v: if builtins.isAttrs (entryOf v) then contentSitesOf (sitesOfInstance v (entryOf v)) else [ ]
-        ) (builtins.attrNames instances.vertices)
+        builtins.concatMap (v: contentSitesOf v (sitesOfInstance v)) (builtins.attrNames instances.vertices)
       );
+      # An applied body's include edges, by address: `localTargets` with its content named by address.
+      instLocal =
+        addr: sites:
+        builtins.concatLists (
+          prelude.imap0 (
+            i: s:
+            if s.kind == "local" then
+              [ s.target ]
+            else if s.kind == "content" && s ? target then
+              [ "${addr}/includes/${toString i}" ]
+            else if s.kind == "content" then
+              instLocal "${addr}/includes/${toString i}" s.sites
+            else
+              [ ]
+          ) sites
+        );
       staticTargets = builtins.filter (
         t: !(facts.nodeData ? ${t} && aspects.isGuardLeaf facts.nodeData.${t})
       );
@@ -587,9 +614,7 @@ let
           )
         else
           [ ];
-      entryOf = v: instances.vertices.${v}.entry or { };
-      instTargets =
-        v: if builtins.isAttrs (entryOf v) then localTargets (sitesOfInstance v (entryOf v)) else [ ];
+      instTargets = v: instLocal v (sitesOfInstance v);
       # ONE shared lift: an instance vertex is lifted once per node that reaches it, as an OCCURRENCE
       # `[ node iid ]`, so the per-node nested edges are edges of one receiver-independent graph and
       # the lift is linear in the occurrences (den-hoag-8g2rn).
@@ -650,7 +675,7 @@ let
               else if occs ? ${v} then
                 staticTargets (instTargets occs.${v}.iid)
               else if instContent ? ${v} then
-                staticTargets (localTargets instContent.${v})
+                staticTargets (instLocal v instContent.${v}.sites)
               else
                 [ ];
             edges-nested =
@@ -692,8 +717,8 @@ let
         builtins.listToAttrs (
           map
             (a: {
-              name = occs.${a.node}.iid or a.node;
-              value = null;
+              name = occs.${a.node}.iid or instContent.${a.node}.target or a.node;
+              value = instContent ? ${a.node};
             })
             (scope.resolve {
               inherit wf;
@@ -814,7 +839,7 @@ let
         delivers =
           v:
           (instances.vertices ? ${v})
-          || instContent ? ${v}
+          || inQuery.${v}
           || (facts.nodeData ? ${v} && !(aspects.isGuardLeaf facts.nodeData.${v}));
         # THE PROJECTION-PARITY DOOR, folded into O. Its second arm fires at O's edges (`keyIn`); its
         # first here, where a delivered vertex of S is absent from O's answers. Guards and inline
