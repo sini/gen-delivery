@@ -219,10 +219,11 @@ in
   # ancestor chain; one sighting at each of two hosts; an applied sighting against a static one (the
   # join); the pair at the key of `y`'s own sighting, which compares apart from both; `y`'s sighting
   # equal to one written inside the pair, at a key holding two classes; and, with no pair, another
-  # host's `name` that is a missing attribute. RED the lift's applied content named by class id (v1):
-  # `y`'s projection forces `x`'s classes and aborts; gen-aspects' least site under the enclosing class
-  # (C3's static form): `belowSeveralClasses` aborts; every applied `name` forced to key it:
-  # `nameElsewhere` aborts.
+  # host's `name` that is a missing attribute, at the top of its value and above a sighting equal to
+  # `y`'s at a key holding two classes. RED the lift's applied content named by class id (v1): `y`'s
+  # projection forces `x`'s classes and aborts; gen-aspects' least site under the enclosing class (C3's
+  # static form): `belowSeveralClasses` aborts; every applied `name` forced to key it: `nameElsewhere`
+  # aborts; an applied site that asks whether it has a named ancestor: `nameAboveElsewhere` aborts.
   flake.tests.named-content-applied-bodies.test-a-row-4-pair-in-one-host-leaves-the-others =
     let
       cyc =
@@ -325,6 +326,15 @@ in
           };
           y = tmux;
         };
+        nameAboveElsewhere = projY { } {
+          x = {
+            name = ({ }).nope;
+            T.marks = [ "x" ];
+            includes = [ (tf "a") ];
+          };
+          y = tf "a";
+          z = tf "b";
+        };
       };
       expected = {
         ancestorChain = [ "tmux" ];
@@ -333,6 +343,7 @@ in
         sameKey = [ "q" ];
         belowSeveralClasses = [ "a" ];
         nameElsewhere = [ "tmux" ];
+        nameAboveElsewhere = [ "a" ];
       };
     };
 
