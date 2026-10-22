@@ -64,9 +64,11 @@ members, in declared order:
 - **inline content** written at an include position (an aspect literal, or the part gen-aspects
   coerces a split aspect's `{ config, ... }:` definition into) is delivered at its position, and
   its own includes are followed the same way, so an aspect split across modules delivers every part.
-  It is an **anonymous declaration**, a node of its own: gen-aspects keys static content by where it
-  was declared, and an applied body's content under its instance (`<instance>/includes/<i>`). A
-  named literal and content nested past gen-aspects' depth budget are not nodes and stay positions;
+  It is an **anonymous declaration**, a node of its own: gen-aspects keys static unnamed content by
+  where it was declared, an applied body's unnamed content under its instance
+  (`<instance>/includes/<i>`), and named content by its class, one node however many static takers
+  and instances hold it, so a node reaching it twice receives it once. Content nested past
+  gen-aspects' depth budget is no node and stays a position;
 - a reference into a tree this one does not hold is **refused by name** (federate the trees first);
 - a **parametric aspect** (a guard, or an aspect folded into a guard carrier) is delivered through
   its **instances**, read from `instances`, gen-aspects' instance relation (`instancesFor`): at the
