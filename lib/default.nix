@@ -735,7 +735,9 @@ let
           # The §2 keys this receiver holds: an applied content answer's (`k2`, read without its id)
           # and a static named class's (its id's §2 segment). An applied named answer alone at its key
           # is named by its address (a lazy id); one beside another sighting at its key, by its class id.
-          k2Of = a: if instContent ? ${a.node} then instContent.${a.node}.k2 or null else staticK2 a.node;
+          k2Of =
+            a:
+            if instContent ? ${a.node} then (instContent.${a.node}.info or { }).k2 or null else staticK2 a.node;
           staticK2 =
             v:
             let
@@ -757,10 +759,10 @@ let
             let
               site = instContent.${addr};
               up = builtins.match "(.*)/includes/[0-9]+" addr;
-              k = site.k2 or null;
+              k = (site.info or { }).k2 or null;
             in
             if k != null then
-              counts.${k} == 1 && !(site.joined or false)
+              counts.${k} == 1 && !((site.info or { }).joined or false)
             else
               up != null && instContent ? ${builtins.head up} && lazyAt (builtins.head up);
         in
