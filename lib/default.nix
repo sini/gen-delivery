@@ -347,7 +347,7 @@ let
   # (`resolve`), read here and never re-run. A member is an identifier, resolved through the
   # facts' key→id relation (`nodeIdOf`), never by re-rendering the id.
   projectNodes =
-    cnf: deliveryClasses: instances: nodes: values:
+    cnf: deliveryClasses: instances: membersOf: nodes: values:
     let
       # One facts record per `project` call: each node's sites are a thunk in it, resolved at most
       # once however many nodes reach that node.
@@ -882,6 +882,14 @@ let
           }) items
         )
       ) facts.nodeData;
+      # PROBE (ien5k T3): a caller-supplied membership read, `node -> [ member ] | null`; `null` falls
+      # back to the instance's own `aspects`.
+      membersAt =
+        nodeName: inst:
+        let
+          m = if membersOf == null then null else membersOf nodeName;
+        in
+        if m == null then inst.aspects or [ ] else m;
       sharedReach =
         nodeName: inst:
         let
@@ -889,7 +897,7 @@ let
             map (v: {
               name = v;
               value = null;
-            }) (builtins.concatMap (k: reachOf.${memberId nodeName k}) (inst.aspects or [ ]))
+            }) (builtins.concatMap (k: reachOf.${memberId nodeName k}) (membersAt nodeName inst))
           );
           vs = builtins.attrNames S;
         in
@@ -1035,6 +1043,7 @@ let
           "selectNodes"
           "deliveryClasses"
           "instances"
+          "membersOf"
         ];
       }
       (
@@ -1174,7 +1183,7 @@ let
 
           # The per-node build projection — a node-keyed reshape of the flat registry, driven by each
           # node's `aspects` membership. This is what the terminal builds from.
-          nodes = projectNodes declaration deliveryClasses instances nodes values;
+          nodes = projectNodes declaration deliveryClasses instances (o.membersOf or null) nodes values;
         }
       )
     );
