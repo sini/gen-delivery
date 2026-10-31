@@ -142,6 +142,7 @@ one look identical from the carriage side, because the carriage is renamed in bo
 ```sh
 nix develop ./ci --command ci                # the suites, guarded
 nix develop ./ci --command ci --tests-error  # the error-plane cells, guarded
+nix develop ./ci --command ci --tests-process  # the process-plane cost cells
 nix-unit --flake ./ci#tests                  # the suites, unguarded
 nix-unit --flake ./ci#testsError             # the error-plane cells, unguarded
 ```

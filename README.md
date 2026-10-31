@@ -303,6 +303,7 @@ substrate's relation vocabulary, and the member's key.
 ```sh
 nix develop ./ci --command ci                # the suites, guarded
 nix develop ./ci --command ci --tests-error  # cells whose subject is an error MESSAGE, guarded
+nix develop ./ci --command ci --tests-process  # the cost cells, one evaluator process each
 nix-unit --flake ./ci#tests                  # the suites, unguarded
 nix-unit --flake ./ci#testsError             # the error cells, unguarded
 ```
