@@ -816,22 +816,40 @@ let
       # delivered item's sites with `succ`'s own refusals, so a reach that O would refuse refuses
       # here first. A node whose reach meets a guard leaf, or that the instance relation lists, takes
       # the per-node strata whole: its instances live at its own scope.
+      # The static stratum's own graph: the facts vertices and their `includes` edges, the shared
+      # lift without its receivers and occurrences, so a static reach reads neither and its vertex
+      # set does not grow with the node set.
       staticWf = scope.wellFormed {
-        alphabet = [
-          "members"
-          "reaches"
-          "includes"
-          "nested"
-        ];
+        alphabet = [ "includes" ];
         expression = "includes*";
       };
+      staticLifted =
+        scope.eval
+          {
+            parseParent = _: null;
+          }
+          {
+            children = _: _: { };
+            marks = _: _: [ ];
+            edges-includes =
+              _: v:
+              if facts.nodeData ? ${v} && !(aspects.isGuardLeaf facts.nodeData.${v}) then
+                localTargets facts.includeSitesOf.${v}
+              else
+                [ ];
+          }
+          (
+            scope.buildRoots {
+              parentGraph = scope.vertices (builtins.attrNames facts.nodeData);
+            }
+          );
       reachOf = builtins.mapAttrs (
         v: _:
         map (a: a.node) (
           (scope.resolve {
             wf = staticWf;
             dataFilter = _: true;
-          } lifted v).answers
+          } staticLifted v).answers
         )
       ) facts.nodeData;
       # Per facts vertex: its items as O's table keys them, each with the authored classes it carries,
