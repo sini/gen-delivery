@@ -307,11 +307,11 @@
         "gen-schema": "gen-schema"
       },
       "locked": {
-        "lastModified": 1793464892,
-        "narHash": "sha256-mNJc1eXDzsgUtIGWYQZb6YO+7L7RII5xAzHoI9eagOg=",
+        "lastModified": 1793465771,
+        "narHash": "sha256-lIJl4VI2sWF5DcLG7zGH4l/+ddnO8o2qjomp/DDv4U8=",
         "owner": "sini",
         "repo": "gen-aspects",
-        "rev": "1530bb86f53b6297912b11fd2c997984fc3d1a8e",
+        "rev": "a603d50d4490f6806a02406a93feaeba7eb18956",
         "type": "github"
       },
       "original": {
