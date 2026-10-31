@@ -489,12 +489,22 @@ let
               reach nodeName item.inst site.target
             else if site.kind == "content" then
               [ (contentItem item i site) ]
-            else if site.kind == "foreign" then
-              throw (foreignIncludeRefusal named (hostOf item) hostAt site.ref)
             else
-              throw (sealedIncludeRefusal named (hostOf item) hostAt)
+              siteRefusal item i site
           ) (itemSites item)
         );
+      # The two site kinds that deliver nothing and refuse, read by `succ` and by the shared reach
+      # facts below, so both readers refuse one site by one message.
+      siteRefusal =
+        item: i: site:
+        let
+          named = if item.id == null then anchorOf item else item.id;
+          hostAt = at (baseOf item ++ item.pos ++ [ i ]);
+        in
+        if site.kind == "foreign" then
+          throw (foreignIncludeRefusal named (hostOf item) hostAt site.ref)
+        else
+          throw (sealedIncludeRefusal named (hostOf item) hostAt);
       # A declaration's content positions, enumerated by structural recursion over its own sub-values
       # in site order and through its anonymous declarations, so each record carries the host and
       # position the item reaching it carries. It crosses no `local` site and reads no edge (an
@@ -797,13 +807,104 @@ let
         builtins.foldl' (e: i: builtins.elemAt e.includes i) (
           if item.inst != null then instances.vertices.${item.inst}.entry else facts.nodeData.${anchorOf item}
         ) item.pos;
+      # ── THE KEY SET IS DECIDED FROM SHARED FACTS; THE ORDER STAYS PER NODE (den-hoag-ien5k) ──
+      # A node's `classes` key set and each list's length are its element SET's, never its ORDER's.
+      # M distributes over the first step: `members (includes | nested)*` from a receiver is the
+      # union, over its members, of `includes*` from each member (a facts vertex has no `nested`
+      # edge), so a static reach is one resolution PER FACTS VERTEX, shared by every receiver, and a
+      # node's projection is the union of its members' reaches. The per-vertex facts walk each
+      # delivered item's sites with `succ`'s own refusals, so a reach that O would refuse refuses
+      # here first. A node whose reach meets a guard leaf, or that the instance relation lists, takes
+      # the per-node strata whole: its instances live at its own scope.
+      staticWf = scope.wellFormed {
+        alphabet = [
+          "members"
+          "reaches"
+          "includes"
+          "nested"
+        ];
+        expression = "includes*";
+      };
+      reachOf = builtins.mapAttrs (
+        v: _:
+        map (a: a.node) (
+          (scope.resolve {
+            wf = staticWf;
+            dataFilter = _: true;
+          } lifted v).answers
+        )
+      ) facts.nodeData;
+      # Per facts vertex: its items as O's table keys them, each with the authored classes it carries,
+      # after its sites pass `succ`'s refusals.
+      itemClassesOf = builtins.mapAttrs (
+        v: _:
+        let
+          items = [ (nodeItem v) ] ++ staticTree.${v};
+          refused = builtins.foldl' (
+            acc: item:
+            let
+              sites = itemSites item;
+            in
+            builtins.foldl' (
+              acc': i:
+              let
+                site = builtins.elemAt sites i;
+              in
+              if site.kind == "foreign" || site.kind == "sealed" then siteRefusal item i site else acc'
+            ) acc (builtins.genList (i: i) (builtins.length sites))
+          ) null items;
+        in
+        builtins.seq refused (
+          map (i: {
+            name = ik i;
+            value = {
+              inherit (i) id;
+              classes = deliveryClassesOf cnf (contentOf i);
+            };
+          }) items
+        )
+      ) facts.nodeData;
+      sharedReach =
+        nodeName: inst:
+        let
+          S = builtins.listToAttrs (
+            map (v: {
+              name = v;
+              value = null;
+            }) (builtins.concatMap (k: reachOf.${memberId nodeName k}) (inst.aspects or [ ]))
+          );
+          vs = builtins.attrNames S;
+        in
+        if
+          instances.reaches ? ${nodeName}
+          || instances.nestedAt ? ${nodeName}
+          || builtins.any (v: aspects.isGuardLeaf facts.nodeData.${v}) vs
+        then
+          null
+        else
+          {
+            inherit S;
+            # O's table over S, keyed as `tableFor` keys it, counted per authored class.
+            counts = builtins.mapAttrs (_: builtins.length) (
+              builtins.groupBy (a: a) (
+                builtins.concatMap (r: if r.id == null || S ? ${r.id} then r.classes else [ ]) (
+                  builtins.attrValues (
+                    builtins.listToAttrs (
+                      builtins.concatMap (v: itemClassesOf.${v}) (builtins.filter (v: !isAnon.${v}) vs)
+                    )
+                  )
+                )
+              )
+            );
+          };
     in
     builtins.mapAttrs (
       nodeName: inst:
       let
         # M's projection, then O's element list over it (declared order: shortlex over declared
         # positions).
-        inQuery = reachedBy nodeName;
+        shared = sharedReach nodeName inst;
+        inQuery = if shared == null then reachedBy nodeName else shared.S;
         elements = ordered nodeName inst inQuery;
         inOrder = builtins.listToAttrs (
           map (i: {
@@ -860,14 +961,37 @@ let
           else
             acc
         ) null (builtins.attrNames groups);
+        orderedClasses = builtins.seq _collisionCheck (
+          builtins.mapAttrs (_: d: map (r: r.entry.${d.a}) d.elements) delivered
+        );
+        counted = shared.counts;
+        sharedGroups = builtins.groupBy (a: entryMap.${a} or a) (builtins.attrNames counted);
+        _sharedCollisionCheck = builtins.foldl' (
+          acc: dc:
+          if builtins.length sharedGroups.${dc} > 1 then
+            throw (deliveryCollisionRefusal nodeName dc sharedGroups.${dc})
+          else
+            acc
+        ) null (builtins.attrNames sharedGroups);
+        # Each list's length from the shared count, its elements from O: a list's WHNF (and so the
+        # realization predicate, `!= [ ]`) reads no order. The two agree by the parity door.
+        sharedClasses = builtins.seq _sharedCollisionCheck (
+          builtins.mapAttrs (
+            dc: as:
+            let
+              n = counted.${builtins.head as};
+              xs = orderedClasses.${dc};
+              checked = if builtins.length xs == n then xs else throw (projectionParityRefusal nodeName dc false);
+            in
+            builtins.genList (i: builtins.elemAt checked i) n
+          ) sharedGroups
+        );
       in
       {
         bindings = {
           node = inst;
         };
-        classes = builtins.seq _collisionCheck (
-          builtins.mapAttrs (_: d: map (r: r.entry.${d.a}) d.elements) delivered
-        );
+        classes = if shared == null then orderedClasses else sharedClasses;
         elementIds = builtins.seq _collisionCheck (
           builtins.mapAttrs (_: d: map (r: r.eid) d.elements) delivered
         );
