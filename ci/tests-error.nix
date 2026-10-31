@@ -429,7 +429,9 @@ in
       expr = closureClasses [ "a" ] [ { aspects.a.includes = [ hostGuard ]; } ];
       expectedError.msg = exactly (sealedInclude "0");
     };
-    # At depth, the position is the path of indices through each level's `includes`.
+    # At depth, the position names each enclosing include element by its declaration address (the
+    # declaring module's anchor and the path to the element, where its tree is evaluated), then the
+    # closure's own `includes` segment.
     test-nested-sealed-include-names-the-position-path = {
       expr =
         closureClasses
@@ -447,7 +449,7 @@ in
               ];
             }
           ];
-      expectedError.msg = upstreamClosureRefusal "a.includes.[definition 1-entry 1].includes.[definition 1-entry 2]";
+      expectedError.msg = upstreamClosureRefusal ''a.includes.["a:3","aspects","a","includes",0].includes.[definition 1-entry 2]'';
     };
     # Inside inline content, the refusal names the anonymous node and then the aspect it was written
     # in, and the position is still the path from that aspect.
