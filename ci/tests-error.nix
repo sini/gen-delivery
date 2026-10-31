@@ -28,6 +28,7 @@
   lib,
   aspects,
   genMerge,
+  genSchema,
   term,
   prelude,
   ...
@@ -200,6 +201,25 @@ let
       };
     };
   edgeFrom = "gen-delivery: project: the instance relation's edge";
+
+  # ── THE FLEET CHECKS ON A ONE-HOST READ (den-hoag-ien5k) ── four hosts, the plant at h3, read
+  # through h0's artifact and through the class spine: neither read deep-forces h3, so each cell reds
+  # if its check moves under h3's own value.
+  oneOfN =
+    plant:
+    import ./one-host-fixture.nix
+      {
+        inherit
+          genDelivery
+          aspects
+          genMerge
+          genSchema
+          ;
+      }
+      {
+        n = 4;
+        inherit plant;
+      };
 
   # ── THE DELIVERY-CLASS MAP'S REFUSALS ── nodes a, b, c carry T content (`web`); `withU` adds U
   # content (`extra`) at a. The expression deep-forces the realization, so a refusal on any spine
@@ -782,6 +802,31 @@ in
         };
       };
       expectedError.msg = exactly "gen-delivery: project: authored classes T, U at node 'a' land in one delivery class 'U' under deliveryClasses; their contents would merge in one terminal";
+    };
+    # ── THE FLEET CHECKS ON A ONE-HOST READ (den-hoag-ien5k) ──
+    test-one-host-read-refuses-another-nodes-content-with-no-terminal = {
+      expr = (oneOfN "content").one;
+      expectedError.msg = exactly "gen-delivery: realize: node h3 carries declared U content, and class U has no terminal — the content would be dropped";
+    };
+    test-spine-read-refuses-another-nodes-content-with-no-terminal = {
+      expr = (oneOfN "content").spine;
+      expectedError.msg = exactly "gen-delivery: realize: node h3 carries declared U content, and class U has no terminal — the content would be dropped";
+    };
+    test-one-host-read-refuses-extras-addressed-to-another-node-with-no-content = {
+      expr = (oneOfN "addressed").one;
+      expectedError.msg = exactly "gen-delivery: realize: extraModules.T.h3 addresses a node with no declared T content — a delivery class realizes only on declared content, so T does not realize there and the extras would be dropped";
+    };
+    test-spine-read-refuses-extras-addressed-to-another-node-with-no-content = {
+      expr = (oneOfN "addressed").spine;
+      expectedError.msg = exactly "gen-delivery: realize: extraModules.T.h3 addresses a node with no declared T content — a delivery class realizes only on declared content, so T does not realize there and the extras would be dropped";
+    };
+    test-one-host-read-refuses-another-nodes-delivery-class-collision = {
+      expr = (oneOfN "collision").one;
+      expectedError.msg = exactly "gen-delivery: project: authored classes T, U at node 'h3' land in one delivery class 'T' under deliveryClasses; their contents would merge in one terminal";
+    };
+    test-spine-read-refuses-another-nodes-delivery-class-collision = {
+      expr = (oneOfN "collision").spine;
+      expectedError.msg = exactly "gen-delivery: project: authored classes T, U at node 'h3' land in one delivery class 'T' under deliveryClasses; their contents would merge in one terminal";
     };
     test-delivery-classes-missing-entry-refuses-at-the-content-check = {
       expr = mapped {

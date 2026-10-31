@@ -481,10 +481,6 @@ let
         builtins.concatLists (
           prelude.imap0 (
             i: site:
-            let
-              named = if item.id == null then anchorOf item else item.id;
-              hostAt = at (baseOf item ++ item.pos ++ [ i ]);
-            in
             if site.kind == "local" then
               reach nodeName item.inst site.target
             else if site.kind == "content" then
@@ -719,30 +715,46 @@ let
       # host's tree, and an applied body's content only in its instance's. `listToAttrs` would keep
       # the first of two equal keys silently, so a record's host never depends on which came first.
       ik = item: builtins.toJSON item.key;
+      entry = i: {
+        name = ik i;
+        value = i;
+      };
+      # A facts vertex's entries, shared by every table over it. Each item carries the authored
+      # classes it delivers, forced only after its vertex's sites pass `succ`'s refusals; only the
+      # shared counts read them.
+      entriesAt = builtins.mapAttrs (
+        v: _:
+        map
+          (
+            i:
+            entry (
+              i
+              // {
+                classes = builtins.seq refusedAt.${v} (deliveryClassesOf cnf (contentOf i));
+              }
+            )
+          )
+          (
+            if aspects.isGuardLeaf facts.nodeData.${v} || isAnon.${v} then
+              [ ]
+            else
+              [ (nodeItem v) ] ++ staticTree.${v}
+          )
+      ) facts.nodeData;
       tableFor =
         S:
         builtins.listToAttrs (
-          map
-            (i: {
-              name = ik i;
-              value = i;
-            })
-            (
-              builtins.filter (i: i.id == null || S ? ${i.id}) (
-                builtins.concatMap (
-                  v:
-                  if facts.nodeData ? ${v} then
-                    if aspects.isGuardLeaf facts.nodeData.${v} || isAnon.${v} then
-                      [ ]
-                    else
-                      [ (nodeItem v) ] ++ staticTree.${v}
-                  else if isVertex v then
-                    [ (instItem v) ] ++ contentTree (instItem v)
-                  else
-                    [ ]
-                ) (builtins.attrNames S)
-              )
-            )
+          builtins.filter (e: e.value.id == null || S ? ${e.value.id}) (
+            builtins.concatMap (
+              v:
+              if facts.nodeData ? ${v} then
+                entriesAt.${v}
+              else if isVertex v then
+                map entry ([ (instItem v) ] ++ contentTree (instItem v))
+              else
+                [ ]
+            ) (builtins.attrNames S)
+          )
         );
       rootK = builtins.toJSON [ ];
       # The calculus takes letters in alphabet order at each vertex, so the root's member reaches
@@ -757,12 +769,13 @@ let
       # The node's element list: O's first-reach answers from the root, mapped to their records.
       # Its edges are the member reaches, in declared order, and `succ`, whose doors fire from these
       # edge reads. An edge leaving S refuses by the parity door's second arm; the start keys are
-      # forced before the answers are read, so an emptied S refuses even where an injected `scope`
-      # never runs O's edges.
+      # forced before the answers are read, so on the per-node strata an emptied S refuses even where
+      # an injected `scope` never runs O's edges. On the shared path O runs only on an element read:
+      # where a class's shared count is positive the length door refuses there, and where it is 0 the
+      # class key is absent and nothing reads O, so an S emptied by an injected `scope` drops silently.
       ordered =
-        nodeName: inst: S:
+        nodeName: inst: table:
         let
-          table = tableFor S;
           keyIn =
             item:
             let
@@ -812,10 +825,12 @@ let
       # M distributes over the first step: `members (includes | nested)*` from a receiver is the
       # union, over its members, of `includes*` from each member (a facts vertex has no `nested`
       # edge), so a static reach is one resolution PER FACTS VERTEX, shared by every receiver, and a
-      # node's projection is the union of its members' reaches. The per-vertex facts walk each
-      # delivered item's sites with `succ`'s own refusals, so a reach that O would refuse refuses
-      # here first. A node whose reach meets a guard leaf, or that the instance relation lists, takes
-      # the per-node strata whole: its instances live at its own scope.
+      # node's projection is the union of its members' reaches. A reach's facts (its set, O's table
+      # over it and the table's counts) are shared per facts vertex by every node whose one member it
+      # is. The counts read each delivered item's classes only after its vertex's sites pass `succ`'s
+      # own refusals, so a reach that O would refuse refuses here first. A node whose reach meets a
+      # guard leaf, or that the instance relation lists, takes the per-node strata whole: its
+      # instances live at its own scope.
       # The static stratum's own graph: the facts vertices and their `includes` edges, the shared
       # lift without its receivers and occurrences, so a static reach reads neither and its vertex
       # set does not grow with the node set.
@@ -852,167 +867,178 @@ let
           } staticLifted v).answers
         )
       ) facts.nodeData;
-      # Per facts vertex: its items as O's table keys them, each with the authored classes it carries,
-      # after its sites pass `succ`'s refusals.
-      itemClassesOf = builtins.mapAttrs (
+      # Per facts vertex: its items' sites pass `succ`'s refusals, every site kind `succ` does not
+      # deliver refusing by `succ`'s own arm. An anonymous declaration's sites are its host's items.
+      refusedAt = builtins.mapAttrs (
         v: _:
-        let
-          items = [ (nodeItem v) ] ++ staticTree.${v};
-          refused = builtins.foldl' (
-            acc: item:
+        builtins.foldl' (
+          acc: item:
+          let
+            sites = itemSites item;
+          in
+          builtins.foldl' (
+            acc': i:
             let
-              sites = itemSites item;
+              site = builtins.elemAt sites i;
             in
-            builtins.foldl' (
-              acc': i:
-              let
-                site = builtins.elemAt sites i;
-              in
-              if site.kind == "foreign" || site.kind == "sealed" then siteRefusal item i site else acc'
-            ) acc (builtins.genList (i: i) (builtins.length sites))
-          ) null items;
-        in
-        builtins.seq refused (
-          map (i: {
-            name = ik i;
-            value = {
-              inherit (i) id;
-              classes = deliveryClassesOf cnf (contentOf i);
-            };
-          }) items
-        )
+            if site.kind != "local" && site.kind != "content" then siteRefusal item i site else acc'
+          ) acc (builtins.genList (i: i) (builtins.length sites))
+        ) null ([ (nodeItem v) ] ++ staticTree.${v})
       ) facts.nodeData;
-      sharedReach =
-        nodeName: inst:
+      setOf =
+        vs:
+        builtins.listToAttrs (
+          map (v: {
+            name = v;
+            value = null;
+          }) vs
+        );
+      # A static reach's facts: its set, O's table over it (the one table both O and the counts read),
+      # and the table's count per authored class. Null when S meets a guard leaf: its instances live
+      # at the reaching node's own scope.
+      staticFacts =
+        S:
         let
-          S = builtins.listToAttrs (
-            map (v: {
-              name = v;
-              value = null;
-            }) (builtins.concatMap (k: reachOf.${memberId nodeName k}) (inst.aspects or [ ]))
-          );
-          vs = builtins.attrNames S;
+          table = tableFor S;
         in
-        if
-          instances.reaches ? ${nodeName}
-          || instances.nestedAt ? ${nodeName}
-          || builtins.any (v: aspects.isGuardLeaf facts.nodeData.${v}) vs
-        then
+        if builtins.any (v: aspects.isGuardLeaf facts.nodeData.${v}) (builtins.attrNames S) then
           null
         else
           {
-            inherit S;
-            # O's table over S, keyed as `tableFor` keys it, counted per authored class.
+            inherit S table;
             counts = builtins.mapAttrs (_: builtins.length) (
-              builtins.groupBy (a: a) (
-                builtins.concatMap (r: if r.id == null || S ? ${r.id} then r.classes else [ ]) (
-                  builtins.attrValues (
-                    builtins.listToAttrs (
-                      builtins.concatMap (v: itemClassesOf.${v}) (builtins.filter (v: !isAnon.${v}) vs)
-                    )
-                  )
-                )
-              )
+              builtins.groupBy (a: a) (builtins.concatMap (i: i.classes) (builtins.attrValues table))
             );
           };
+      # One member's reach, shared by every node whose member list is that one vertex.
+      staticAt = builtins.mapAttrs (v: _: staticFacts (setOf reachOf.${v})) facts.nodeData;
+      sharedReach =
+        nodeName: inst:
+        if instances.reaches ? ${nodeName} || instances.nestedAt ? ${nodeName} then
+          null
+        else
+          let
+            ids = map (memberId nodeName) (inst.aspects or [ ]);
+          in
+          if builtins.length ids == 1 then
+            staticAt.${builtins.head ids}
+          else
+            staticFacts (setOf (builtins.concatMap (v: reachOf.${v}) ids));
+      # O's half of a node: its element list over M's projection and the two positional projections
+      # of it. `shared` is the node's static facts, or null on the per-node strata.
+      orderOf =
+        nodeName: inst: shared:
+        let
+          # M's projection, then O's element list over it (declared order: shortlex over declared
+          # positions).
+          inQuery = if shared == null then reachedBy nodeName else shared.S;
+          elements = ordered nodeName inst (if shared == null then tableFor inQuery else shared.table);
+          inOrder = builtins.listToAttrs (
+            map (i: {
+              name = i.id;
+              value = null;
+            }) (builtins.filter (i: i.id != null) elements)
+          );
+          delivers =
+            v:
+            (instances.vertices ? ${v})
+            || instContent ? ${v}
+            || (facts.nodeData ? ${v} && !(aspects.isGuardLeaf facts.nodeData.${v}));
+          # THE PROJECTION-PARITY DOOR, folded into O. Its second arm fires at O's edges (`keyIn`); its
+          # first here, where a delivered vertex of S is absent from O's answers. Guards and inline
+          # positions that are no node are not delivered vertices, so neither side counts them; an
+          # anonymous declaration is one, so both do.
+          _parity =
+            let
+              extra = builtins.filter (v: delivers v && !(inOrder ? ${v})) (builtins.attrNames inQuery);
+            in
+            if extra != [ ] then throw (projectionParityRefusal nodeName (builtins.head extra) true) else null;
+          reached = builtins.seq _parity (
+            map (
+              item:
+              let
+                entry = contentOf item;
+              in
+              {
+                inherit entry;
+                classes = deliveryClassesOf cnf entry;
+                eid = item.id;
+              }
+            ) elements
+          );
+          authored = dedup (builtins.concatMap (r: r.classes) reached);
+          # Per delivery class: its one authored class and the reached elements carrying it, in
+          # closure order. `classes` and `elementIds` are two positional projections of this list.
+          delivered = builtins.mapAttrs (
+            _: as:
+            let
+              a = builtins.head as;
+            in
+            {
+              inherit a;
+              elements = builtins.filter (r: builtins.elem a r.classes) reached;
+            }
+          ) groups;
+          groups = builtins.groupBy (a: (deliveryClasses.${nodeName} or { }).${a} or a) authored;
+          _collisionCheck = builtins.foldl' (
+            acc: dc:
+            if builtins.length groups.${dc} > 1 then
+              throw (deliveryCollisionRefusal nodeName dc groups.${dc})
+            else
+              acc
+          ) null (builtins.attrNames groups);
+        in
+        {
+          classes = builtins.seq _collisionCheck (
+            builtins.mapAttrs (_: d: map (r: r.entry.${d.a}) d.elements) delivered
+          );
+          elementIds = builtins.seq _collisionCheck (
+            builtins.mapAttrs (_: d: map (r: r.eid) d.elements) delivered
+          );
+        };
+      # A node's classes on the shared path: each list's length from the shared count, its elements
+      # from O, so a list's WHNF (and so the realization predicate, `!= [ ]`) reads no order. The two
+      # agree by the length door, read on an element.
+      sized =
+        nodeName: o: dc: n:
+        let
+          xs = o.classes.${dc};
+          checked = if builtins.length xs == n then xs else throw (projectionParityRefusal nodeName dc false);
+        in
+        builtins.genList (i: builtins.elemAt checked i) n;
+      sharedClassesOf =
+        nodeName: counted: o:
+        # With no entry each authored class is its own delivery class, so no two collide.
+        if !(deliveryClasses ? ${nodeName}) then
+          builtins.mapAttrs (sized nodeName o) counted
+        else
+          let
+            entryMap = deliveryClasses.${nodeName};
+            groups = builtins.groupBy (a: entryMap.${a} or a) (builtins.attrNames counted);
+            _collisionCheck = builtins.foldl' (
+              acc: dc:
+              if builtins.length groups.${dc} > 1 then
+                throw (deliveryCollisionRefusal nodeName dc groups.${dc})
+              else
+                acc
+            ) null (builtins.attrNames groups);
+          in
+          builtins.seq _collisionCheck (
+            builtins.mapAttrs (dc: as: sized nodeName o dc counted.${builtins.head as}) groups
+          );
     in
     builtins.mapAttrs (
       nodeName: inst:
       let
-        # M's projection, then O's element list over it (declared order: shortlex over declared
-        # positions).
         shared = sharedReach nodeName inst;
-        inQuery = if shared == null then reachedBy nodeName else shared.S;
-        elements = ordered nodeName inst inQuery;
-        inOrder = builtins.listToAttrs (
-          map (i: {
-            name = i.id;
-            value = null;
-          }) (builtins.filter (i: i.id != null) elements)
-        );
-        delivers =
-          v:
-          (instances.vertices ? ${v})
-          || instContent ? ${v}
-          || (facts.nodeData ? ${v} && !(aspects.isGuardLeaf facts.nodeData.${v}));
-        # THE PROJECTION-PARITY DOOR, folded into O. Its second arm fires at O's edges (`keyIn`); its
-        # first here, where a delivered vertex of S is absent from O's answers. Guards and inline
-        # positions that are no node are not delivered vertices, so neither side counts them; an
-        # anonymous declaration is one, so both do.
-        _parity =
-          let
-            extra = builtins.filter (v: delivers v && !(inOrder ? ${v})) (builtins.attrNames inQuery);
-          in
-          if extra != [ ] then throw (projectionParityRefusal nodeName (builtins.head extra) true) else null;
-        reached = builtins.seq _parity (
-          map (
-            item:
-            let
-              entry = contentOf item;
-            in
-            {
-              inherit entry;
-              classes = deliveryClassesOf cnf entry;
-              eid = item.id;
-            }
-          ) elements
-        );
-        authored = dedup (builtins.concatMap (r: r.classes) reached);
-        # Per delivery class: its one authored class and the reached elements carrying it, in
-        # closure order. `classes` and `elementIds` are two positional projections of this list.
-        delivered = builtins.mapAttrs (
-          _: as:
-          let
-            a = builtins.head as;
-          in
-          {
-            inherit a;
-            elements = builtins.filter (r: builtins.elem a r.classes) reached;
-          }
-        ) groups;
-        entryMap = deliveryClasses.${nodeName} or { };
-        groups = builtins.groupBy (a: entryMap.${a} or a) authored;
-        _collisionCheck = builtins.foldl' (
-          acc: dc:
-          if builtins.length groups.${dc} > 1 then
-            throw (deliveryCollisionRefusal nodeName dc groups.${dc})
-          else
-            acc
-        ) null (builtins.attrNames groups);
-        orderedClasses = builtins.seq _collisionCheck (
-          builtins.mapAttrs (_: d: map (r: r.entry.${d.a}) d.elements) delivered
-        );
-        counted = shared.counts;
-        sharedGroups = builtins.groupBy (a: entryMap.${a} or a) (builtins.attrNames counted);
-        _sharedCollisionCheck = builtins.foldl' (
-          acc: dc:
-          if builtins.length sharedGroups.${dc} > 1 then
-            throw (deliveryCollisionRefusal nodeName dc sharedGroups.${dc})
-          else
-            acc
-        ) null (builtins.attrNames sharedGroups);
-        # Each list's length from the shared count, its elements from O: a list's WHNF (and so the
-        # realization predicate, `!= [ ]`) reads no order. The two agree by the parity door.
-        sharedClasses = builtins.seq _sharedCollisionCheck (
-          builtins.mapAttrs (
-            dc: as:
-            let
-              n = counted.${builtins.head as};
-              xs = orderedClasses.${dc};
-              checked = if builtins.length xs == n then xs else throw (projectionParityRefusal nodeName dc false);
-            in
-            builtins.genList (i: builtins.elemAt checked i) n
-          ) sharedGroups
-        );
+        o = orderOf nodeName inst shared;
       in
       {
         bindings = {
           node = inst;
         };
-        classes = if shared == null then orderedClasses else sharedClasses;
-        elementIds = builtins.seq _collisionCheck (
-          builtins.mapAttrs (_: d: map (r: r.eid) d.elements) delivered
-        );
+        classes = if shared == null then o.classes else sharedClassesOf nodeName shared.counts o;
+        inherit (o) elementIds;
       }
     ) nodes;
 

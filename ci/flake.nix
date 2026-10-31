@@ -132,8 +132,12 @@
       # instead of failing it. They get their own output, read by
       # `nix-unit --flake ./ci#testsError`, and being outside ./tests is what keeps that split
       # structural rather than conventional.
+      # `tests-process.nix` is a PROCESS plane: its verdict is a process exit and a count, not a
+      # nix-unit output, so it lives here beside `tests-error.nix` and is read by
+      # `apps.tests-process`, not `testModules`.
       extraModules = [
         ./tests-error.nix
+        ./tests-process.nix
       ];
     };
 }
