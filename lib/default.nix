@@ -352,8 +352,8 @@ let
       # One facts record per `project` call: each node's sites are a thunk in it, resolved at most
       # once however many nodes reach that node.
       facts = aspects.graphFacts cnf (values.aspects or { });
-      # An applied instance body's sites, its anonymous content keyed under the instance id and its
-      # named values classed across the static tree and every vertex of the relation.
+      # An applied instance body's sites, its anonymous content keyed under the instance id and each
+      # named value keyed by its own sighting (gen-aspects `includeSitesOfInstance`).
       sitesOfInstance = aspects.includeSitesOfInstance cnf (values.aspects or { }) instances;
       at = pos: prelude.concatStringsSep "." (map toString pos);
 
