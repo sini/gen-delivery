@@ -454,8 +454,13 @@ let
         item: i: site:
         let
           pos = item.pos ++ [ i ];
+          addr = "${item.inst}" + builtins.concatStringsSep "" (map (j: "/includes/${toString j}") pos);
+          # A LAZY ID: an applied named content item a receiver holds alone at its §2 key is named by its
+          # structural address (`reachedBy`), so projecting its content forces no class id and no digest;
+          # its id is read only by `elementIds` (`cid`) or where a second sighting at its key needs it.
+          lazy = item.inst != null && (item.S or null) != null && item.S ? ${addr};
         in
-        if site ? target && facts.nodeData ? ${site.target} then
+        if !lazy && site ? target && facts.nodeData ? ${site.target} then
           # A static anonymous declaration is a node: reached, and delivered, as one.
           nodeItem site.target
           // {
@@ -466,9 +471,14 @@ let
           # An applied body's content (its id instance-relative), or an inline position that is no
           # node (no `target`: a named element, content past the depth budget), which keeps its
           # address and whose own sites refuse where read.
+          let
+            nm = if lazy then addr else site.target or null;
+          in
           {
-            key = if site ? target then [ site.target ] else [ (anchorOf item) ] ++ pos;
-            id = site.target or null;
+            key = if site ? target then [ nm ] else [ (anchorOf item) ] ++ pos;
+            id = nm;
+            cid = site.target or null;
+            S = item.S or null;
             anchor = anchorOf item;
             host = hostOf item;
             base = baseOf item;
@@ -489,7 +499,7 @@ let
             if site.kind == "local" then
               reach nodeName item.inst site.target
             else if site.kind == "content" then
-              [ (contentItem item i site) ]
+              [ (contentItem (item // { S = item.S or reachedByOf.${nodeName}; }) i site) ]
             else if site.kind == "foreign" then
               throw (foreignIncludeRefusal named (hostOf item) hostAt site.ref)
             else
@@ -712,18 +722,53 @@ let
       };
       # The query's answers, read as a SET: nothing orders over them (O orders), so any permutation
       # of M's answers gives byte-identical output.
+      # Per receiver, computed once: the projection and the content items it names read one answer set.
+      reachedByOf = builtins.mapAttrs (n: _: reachedBy n) nodes;
       reachedBy =
         nodeName:
-        builtins.listToAttrs (
-          map
-            (a: {
-              name = occs.${a.node}.iid or instContent.${a.node}.target or a.node;
-              value = instContent ? ${a.node};
-            })
+        let
+          answers =
             (scope.resolve {
               inherit wf;
               dataFilter = _: true;
-            } lifted (rid nodeName)).answers
+            } lifted (rid nodeName)).answers;
+          # The §2 keys this receiver holds: an applied content answer's (`k2`, read without its id)
+          # and a static named class's (its id's §2 segment). An applied named answer alone at its key
+          # is named by its address (a lazy id); one beside another sighting at its key, by its class id.
+          k2Of = a: if instContent ? ${a.node} then instContent.${a.node}.k2 or null else staticK2 a.node;
+          staticK2 =
+            v:
+            let
+              m = builtins.match ".*@/includes/([^/]+).*" v;
+            in
+            if facts.nodeData ? ${v} && m != null then builtins.head m else null;
+          counts = builtins.foldl' (
+            acc: a:
+            let
+              k = k2Of a;
+            in
+            if k == null then acc else acc // { ${k} = (acc.${k} or 0) + 1; }
+          ) { } answers;
+          # Unnamed content is lazy exactly when the nearest named content above it is: its id is keyed
+          # under that class (F10), so it needs the class id only where the class does.
+          lazy = a: instContent ? ${a.node} && lazyAt a.node;
+          lazyAt =
+            addr:
+            let
+              site = instContent.${addr};
+              up = builtins.match "(.*)/includes/[0-9]+" addr;
+              k = site.k2 or null;
+            in
+            if k != null then
+              counts.${k} == 1 && !(site.joined or false)
+            else
+              up != null && instContent ? ${builtins.head up} && lazyAt (builtins.head up);
+        in
+        builtins.listToAttrs (
+          map (a: {
+            name = if lazy a then a.node else occs.${a.node}.iid or instContent.${a.node}.target or a.node;
+            value = instContent ? ${a.node};
+          }) answers
         );
       # ── STRATUM O: ONE ORDER SCOPE PER RECEIVER, OVER ITS PROJECTION ──
       # The include graph induced on S (M's answers for the node) plus the content positions that are
@@ -752,7 +797,7 @@ let
                     else
                       [ (nodeItem v) ] ++ staticTree.${v}
                   else if isVertex v then
-                    [ (instItem v) ] ++ contentTree (instItem v)
+                    [ (instItem v) ] ++ contentTree (instItem v // { inherit S; })
                   else
                     [ ]
                 ) (builtins.attrNames S)
@@ -828,7 +873,7 @@ let
       let
         # M's projection, then O's element list over it (declared order: shortlex over declared
         # positions).
-        inQuery = reachedBy nodeName;
+        inQuery = reachedByOf.${nodeName};
         elements = ordered nodeName inst inQuery;
         inOrder = builtins.listToAttrs (
           map (i: {
@@ -859,7 +904,7 @@ let
             {
               inherit entry;
               classes = deliveryClassesOf cnf entry;
-              eid = item.id;
+              eid = item.cid or item.id;
             }
           ) elements
         );
