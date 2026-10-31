@@ -576,4 +576,53 @@ in
         yFirst = [ "b" ];
       };
     };
+
+  # D7. A value's id is read only where it is needed (owner 2026-10-31, P1-c: a LAZY ID): a host holding
+  # one applied named value alone at its §2 key reads its content without its class id, so a leaf no
+  # comparison reaches, which the id's digest would read, is never read by projecting the host's own
+  # content, nested content included, as at main. One factory makes `x`'s value (`T` holding an
+  # uncatchable leaf) and `y`'s. RED the id read by every projection (sfkyy-a4): `x`'s projection aborts.
+  flake.tests.named-content-applied-bodies.test-a-value-alone-at-its-key-is-projected-without-its-id =
+    let
+      f =
+        nested: m: extra:
+        {
+          name = "t";
+          T = {
+            marks = [ m ];
+          }
+          // extra;
+        }
+        // (if nested then { includes = [ { T.marks = [ "inner-${m}" ]; } ]; } else { });
+      readX =
+        nested:
+        let
+          p = project (ev [
+            {
+              aspects = {
+                a1 = g { includes = [ (f nested "a" { deep.zz = ({ }).nope; }) ]; };
+                a2 = g { includes = [ (f nested "b" { }) ]; };
+              };
+              hosts = {
+                x.aspects = [ "a1" ];
+                y.aspects = [ "a2" ];
+              };
+            }
+          ]);
+        in
+        builtins.concatMap marksIn p.nodes.x.classes.T;
+    in
+    {
+      expr = {
+        flat = readX false;
+        nested = readX true;
+      };
+      expected = {
+        flat = [ "a" ];
+        nested = [
+          "a"
+          "inner-a"
+        ];
+      };
+    };
 }
