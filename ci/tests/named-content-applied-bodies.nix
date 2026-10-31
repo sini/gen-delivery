@@ -525,4 +525,55 @@ in
         ids = 3;
       };
     };
+  # D6. The rung's partition reads a value only where another value at its key agrees with it on
+  # everything read before, as `==` does, so a leaf no comparison reaches is never read. One factory
+  # (one `name` position) makes `x`'s value, whose `T` holds an extra attribute with an uncatchable
+  # leaf, and `y`'s; `==` between them stops at `T`'s attribute names. RED a partition keyed by a
+  # bounded walk of every value (a fingerprint): `y`'s projection aborts when `x` sorts first.
+  flake.tests.named-content-applied-bodies.test-a-leaf-no-comparison-reaches-is-never-read =
+    let
+      f = m: extra: {
+        name = "t";
+        T = {
+          marks = [ m ];
+        }
+        // extra;
+      };
+      readY =
+        first:
+        let
+          bad = g { includes = [ (f "a" { deep.zz = ({ }).nope; }) ]; };
+          good = g { includes = [ (f "b" { }) ]; };
+          p = project (ev [
+            {
+              aspects =
+                if first == "x" then
+                  {
+                    a1 = bad;
+                    a2 = good;
+                  }
+                else
+                  {
+                    a1 = good;
+                    a2 = bad;
+                  };
+              hosts = {
+                x.aspects = [ (if first == "x" then "a1" else "a2") ];
+                y.aspects = [ (if first == "x" then "a2" else "a1") ];
+              };
+            }
+          ]);
+        in
+        builtins.concatMap marksIn p.nodes.y.classes.T;
+    in
+    {
+      expr = {
+        xFirst = readY "x";
+        yFirst = readY "y";
+      };
+      expected = {
+        xFirst = [ "b" ];
+        yFirst = [ "b" ];
+      };
+    };
 }
