@@ -1,10 +1,11 @@
 # A NAMED VALUE IN AN APPLIED BODY IS DELIVERED AS ITS CLASS'S NODE
 # (den-hoag-named-include-instance-bodies-sfkyy; identity design 2026-09-30 §2, Q5 "yes").
 #
-# gen-aspects classes a named value's sightings across the static tree and every vertex of the
-# relation (`includeSitesOfInstance cnf aspects instances iid`), so `project` reaches one node however
-# many instances, or static takers, hold the value: a host reaching two of them receives the content
-# once, and `elementIds` names one id at every host. An unnamed literal stays one node per instance
+# gen-aspects keys a named value by its own sighting (`includeSitesOfInstance cnf aspects instances
+# iid`): the static class it joins, else its content digest, else (content the mint refuses) a class
+# within its instance. So `project` reaches one node however many instances, or static takers, hold a
+# value the mint takes: a host reaching two of them receives the content once, and `elementIds` names
+# one id at every host. An unnamed literal stays one node per instance
 # (Q1; design §3 Content).
 {
   genDeliveryWith,
