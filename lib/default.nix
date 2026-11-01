@@ -891,13 +891,13 @@ let
         in
         if m == null then inst.aspects or [ ] else m;
       sharedReach =
-        nodeName: inst:
+        nodeName: inst: members:
         let
           S = builtins.listToAttrs (
             map (v: {
               name = v;
               value = null;
-            }) (builtins.concatMap (k: reachOf.${memberId nodeName k}) (membersAt nodeName inst))
+            }) (builtins.concatMap (k: reachOf.${memberId nodeName k}) members)
           );
           vs = builtins.attrNames S;
         in
@@ -929,7 +929,9 @@ let
       let
         # M's projection, then O's element list over it (declared order: shortlex over declared
         # positions).
-        shared = sharedReach nodeName inst;
+        # PROBE (ien5k Q3B): the node's declared membership, read ONCE and published on its record.
+        members = membersAt nodeName inst;
+        shared = sharedReach nodeName inst members;
         inQuery = if shared == null then reachedBy nodeName else shared.S;
         elements = ordered nodeName inst inQuery;
         inOrder = builtins.listToAttrs (
@@ -1014,6 +1016,7 @@ let
         );
       in
       {
+        inherit members;
         bindings = {
           node = inst;
         };
