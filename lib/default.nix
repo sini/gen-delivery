@@ -347,8 +347,16 @@ let
   # (`resolve`), read here and never re-run. A member is an identifier, resolved through the
   # facts' key→id relation (`nodeIdOf`), never by re-rendering the id.
   projectNodes =
-    cnf: deliveryClasses: instances: nodes: values:
+    cnf: deliveryClasses: instances: membersOf: nodes: values:
     let
+      # PROTOTYPE (ien5k T3): a node's members, from the caller's syntactic read where it decides
+      # them, else from the node's own `aspects`; every membership read below reads this one binding.
+      membersAt =
+        nodeName:
+        let
+          m = if membersOf == null then null else membersOf nodeName;
+        in
+        if m == null then nodes.${nodeName}.aspects or [ ] else m;
       # One facts record per `project` call: each node's sites are a thunk in it, resolved at most
       # once however many nodes reach that node.
       facts = aspects.graphFacts cnf (values.aspects or { });
@@ -640,7 +648,7 @@ let
             edges-members =
               _: v:
               if receivers ? ${v} then
-                map (memberId receivers.${v}) (nodes.${receivers.${v}}.aspects or [ ])
+                map (memberId receivers.${v}) (membersAt receivers.${v})
               else
                 [ ];
             edges-reaches =
@@ -786,7 +794,7 @@ let
             else
               throw (projectionParityRefusal nodeName (if item.id != null then item.id else k) false);
           startKeys = map keyIn (
-            builtins.concatMap (k: reach nodeName null (memberId nodeName k)) (inst.aspects or [ ])
+            builtins.concatMap (k: reach nodeName null (memberId nodeName k)) (membersAt nodeName)
           );
           g =
             scope.eval
@@ -918,7 +926,7 @@ let
           null
         else
           let
-            ids = map (memberId nodeName) (inst.aspects or [ ]);
+            ids = map (memberId nodeName) (membersAt nodeName);
           in
           if builtins.length ids == 1 then
             staticAt.${builtins.head ids}
@@ -1061,6 +1069,7 @@ let
           "selectNodes"
           "deliveryClasses"
           "instances"
+          "membersOf"
         ];
       }
       (
@@ -1200,7 +1209,7 @@ let
 
           # The per-node build projection — a node-keyed reshape of the flat registry, driven by each
           # node's `aspects` membership. This is what the terminal builds from.
-          nodes = projectNodes declaration deliveryClasses instances nodes values;
+          nodes = projectNodes declaration deliveryClasses instances (o.membersOf or null) nodes values;
         }
       )
     );
