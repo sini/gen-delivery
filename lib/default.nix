@@ -400,7 +400,25 @@ let
             acc
         ) null (builtins.attrNames (extraModules.${className} or { }));
 
-      # The class-major fold. `realized` is self-referential: a node's `extent` is
+      # DECLARED CONTENT IS AN ADDRESS TOO, AND IT REFUSES BY THE SAME RULE. A node's non-empty
+      # `classes.<c>` addresses class <c>'s terminal exactly as `extraModules.<c>.<node>` does, so a
+      # class with content and no terminal refuses by name rather than dropping its content. The
+      # predicate is the fold's own: membership in `terminals`, and an empty list is the fold's skip.
+      # Forced on EVERY class spine — each already forces the node keys and each node's class set,
+      # so it forces nothing a spine did not, and the result's own spine stays free of the
+      # projection — and at the root iff there is no terminal, the one case with no spine to own it.
+      _contentCheck = builtins.foldl' (
+        acc: nodeName:
+        builtins.foldl' (
+          acc': className:
+          if !(terminals ? ${className}) && nodes.${nodeName}.classes.${className} != [ ] then
+            throw "gen-delivery: realize: node ${nodeName} carries declared ${className} content, and class ${className} has no terminal — the content would be dropped"
+          else
+            acc'
+        ) acc (builtins.attrNames nodes.${nodeName}.classes)
+      ) null (builtins.attrNames nodes);
+
+      # The class-major fold. `realized` is self-referential:a node's `extent` is
       # `realized.<class>`, the same set being built — lazy, so forcing one node's artifact never
       # forces a peer's (the spine is only the class's node keys, populated by `listToAttrs` names).
       realized = builtins.mapAttrs (
@@ -451,7 +469,13 @@ let
         )
       ) terminals;
     in
-    builtins.seq checked (builtins.seq _layerOrderCheck (builtins.seq _extraModulesCheck realized));
+    builtins.seq checked (
+      builtins.seq _layerOrderCheck (
+        builtins.seq _extraModulesCheck (
+          builtins.seq _contentCheck realized
+        )
+      )
+    );
 in
 {
   inherit project realize;

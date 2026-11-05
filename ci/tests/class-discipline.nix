@@ -58,14 +58,34 @@ let
     d = { };
   };
 
-  # A projection that THROWS when forced: the result's own spine is the class names, and it must not
-  # reach the projection to produce them.
+  # A projection that THROWS when forced. The result's own spine reads it — the content check is
+  # total over the class sets, so it must — and the positive control below uses it.
   unforceableProjection = extraModules: {
     projected.nodes = throw "gen-delivery test: projection forced";
     inherit terminals extraModules;
   };
 
+  # A projection whose every CONTENT LIST throws when forced. The content check reads each node's
+  # class SET, and a class's list only when that class has no terminal — where it refuses anyway —
+  # so the result's spine must not reach a list of a class that has one.
+  unforceableContent = extraModules: {
+    projected.nodes = builtins.mapAttrs (
+      _: nc: nc // { classes = builtins.mapAttrs (_: _: throw "gen-delivery test: content forced") nc.classes; }
+    ) projected.nodes;
+    inherit terminals extraModules;
+  };
+
   forces = v: (builtins.tryEval (builtins.deepSeq v v)).success;
+
+  # `n` carries d content and nothing realizes d: declared content addressed to no terminal.
+  undelivered = {
+    n = projected.nodes.n // {
+      classes = projected.nodes.n.classes // {
+        d = [ { from = "d"; } ];
+      };
+    };
+    inherit (projected.nodes) m;
+  };
 in
 {
   flake.tests.class-discipline = {
@@ -124,23 +144,55 @@ in
       expected = false;
     };
 
-    # ── The result's spine forces no projection ──
-    # With no address, the result's WHNF — its class names — reads only `terminals`.
-    test-result-spine-forces-no-projection = {
-      expr = forces (builtins.attrNames (genDelivery.realize (unforceableProjection { })));
+    # ── C6: declared content addressed to a class with no terminal refuses, as its extras do ──
+    test-content-for-a-class-with-no-terminal-refuses = {
+      expr = forces (
+        genDelivery.realize {
+          projected.nodes = undelivered;
+          inherit terminals;
+        }
+      ).a;
+      expected = false;
+    };
+    # With NO terminal there is no class spine to own the check, so the root owns it.
+    test-content-with-an-empty-terminal-set-refuses = {
+      expr = forces (
+        genDelivery.realize {
+          projected.nodes = undelivered;
+          terminals = { };
+        }
+      );
+      expected = false;
+    };
+    # POSITIVE CONTROL in the same run — the same instrument over the same terminals, with d's
+    # content absent, forces cleanly: the refusal above is d's, not the fixture's.
+    test-control-content-with-every-terminal-realizes = {
+      expr = forces implicit.a;
       expected = true;
     };
-    # With an address as well: the node half of the check is refused on the class spine it guards,
-    # not at the root, so an address does not drag the projection into the result's WHNF.
-    test-result-spine-with-an-address-forces-no-projection = {
+
+    # ── The result's spine forces no class content ──
+    # The result's WHNF reads the projection's node keys and class sets (the content check), and
+    # never a content list of a class that has a terminal, nor a terminal.
+    test-result-spine-forces-no-class-content = {
+      expr = forces (builtins.attrNames (genDelivery.realize (unforceableContent { })));
+      expected = true;
+    };
+    # With an address as well: the node half of the address check stays on the class spine it guards.
+    test-result-spine-with-an-address-forces-no-class-content = {
       expr = forces (
         builtins.attrNames (
-          genDelivery.realize (unforceableProjection {
+          genDelivery.realize (unforceableContent {
             a.n = [ { x = 1; } ];
           })
         )
       );
       expected = true;
+    };
+    # POSITIVE CONTROL — the lists DO throw when a terminal's modules are forced.
+    test-control-a-content-list-throws-when-forced = {
+      expr = forces (genDelivery.realize (unforceableContent { })).a.n.modules;
+      expected = false;
     };
     # POSITIVE CONTROL — reading a class spine through the same instrument DOES force the projection,
     # so the two cells above are not reading an instrument that cannot see the throw.

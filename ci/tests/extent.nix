@@ -73,7 +73,10 @@ let
 
   boomed = genDelivery.realize {
     inherit projected;
-    terminals.alpha = boomTerminal;
+    terminals = {
+      alpha = boomTerminal;
+      beta = spineTerminal;
+    };
   };
 
   forces = v: (builtins.tryEval (builtins.deepSeq v v)).success;
