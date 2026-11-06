@@ -852,6 +852,7 @@ in
           "selectNodes"
           "deliveryClasses"
           "instances"
+          "membersOf"
         ] "notAnOption"
       );
     };
@@ -865,6 +866,7 @@ in
           "selectNodes"
           "deliveryClasses"
           "instances"
+          "membersOf"
         ] "cnf"
       );
     };
@@ -875,6 +877,7 @@ in
           "selectNodes"
           "deliveryClasses"
           "instances"
+          "membersOf"
         ] 1
       );
     };
