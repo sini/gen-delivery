@@ -49,6 +49,7 @@ let
         "selectNodes"
         "deliveryClasses"
         "instances"
+        "membersOf"
       ];
       apply = f: f cnf values;
       # Without a selector the node set is refused where it is read; with one, it is that node set.
