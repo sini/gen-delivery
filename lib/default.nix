@@ -356,12 +356,16 @@ let
       # THE CALLER'S OBLIGATION, stated as `instances`' is: a non-null `membersOf <node>` equals
       # `nodes.<node>.aspects`. `project` cannot check it without the read the answer saves; a wrong
       # answer delivers the members it names, at rc 0.
+      # Branched once, outside the per-node read, so a projection with no `membersOf` allocates nothing per read.
       membersAt =
-        nodeName:
-        let
-          m = if membersOf == null then null else membersOf nodeName;
-        in
-        if m == null then nodes.${nodeName}.aspects or [ ] else m;
+        if membersOf == null then
+          nodeName: nodes.${nodeName}.aspects or [ ]
+        else
+          nodeName:
+          let
+            m = membersOf nodeName;
+          in
+          if m == null then nodes.${nodeName}.aspects or [ ] else m;
       # One facts record per `project` call: each node's sites are a thunk in it, resolved at most
       # once however many nodes reach that node.
       facts = aspects.graphFacts cnf (values.aspects or { });
