@@ -92,5 +92,7 @@ in
   # members, nothing projected.
   one = realized.T.h0;
   spine = builtins.attrNames realized.T;
+  # Every host's artifact: the whole fleet's read, which classifies every host's items.
+  every = realized.T;
   members = builtins.mapAttrs (_: h: h.aspects) values.hosts;
 }

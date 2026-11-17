@@ -133,9 +133,28 @@
           [ "$s3" -le $((15 * 43)) ] \
             || die three-member-slope "one host's read costs more than 43 thunks per host above the floor: $s3 over 15 hosts"
 
+          # den-hoag-9z993 G1: the whole fleet's read costs at most 511 thunks per host above its floor on
+          # every segment of four sizes, so the bound holds flat in n (measured on all three evaluators).
+          # It pins `keyCategory cnf` bound once per `projectNodes`: re-entering gen-aspects' cnf door per
+          # key per item read 759.
+          ceil=511
+          prev=
+          for n in 2 4 8 16; do
+            at every "$n" "$n"; e=$thunks
+            at members "$n" "$n"; f=$thunks
+            if [ -n "$prev" ]; then
+              d=$(((e - pe) - (f - pf))) dn=$((n - prev))
+              echo "fleet-per-host: $((d / dn)) thunks per host above the floor over n = $prev..$n ($pe / $e read, $pf / $f floor)"
+              [ "$d" -gt 0 ] || die fleet-per-host "could not measure: no cost above the floor over n = $prev..$n"
+              [ "$d" -le $((ceil * dn)) ] \
+                || die fleet-per-host "the fleet's read costs more than $ceil thunks per host above the floor: $d over n = $prev..$n"
+            fi
+            prev=$n pe=$e pf=$f
+          done
+
           # 0/0 is a false pass: the runner must have executed every evaluation above.
-          [ "$ran" = "10" ] || die runner "expected 10 evaluations, ran $ran"
-          echo "tests-process: 4 cells, every exit read unpiped, every count read" > $out
+          [ "$ran" = "18" ] || die runner "expected 18 evaluations, ran $ran"
+          echo "tests-process: 5 cells, every exit read unpiped, every count read" > $out
         ''
         + ''
           cat "$out"

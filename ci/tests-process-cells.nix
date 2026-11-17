@@ -94,6 +94,8 @@ let
     # The three-member arm: every host a member of `a`, `b` and `c`, where `c` includes `a`.
     one3 = (at 3).one;
     members3 = hostsIn (at 3).members;
+    # Every host's artifact read; its value is the host count.
+    every = hostsIn (at 1).every;
   };
   hostsIn = m: builtins.deepSeq m (builtins.length (builtins.attrNames m));
 in
