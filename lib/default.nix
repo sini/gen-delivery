@@ -126,8 +126,12 @@ let
   # option type does the same. Limb 1 closes both; limb 2 closes the contentless arm independently
   # of how gen-aspects chooses to represent absence.
   deliveryClassesOf =
-    cnf: entry:
-    builtins.filter (k: aspects.keyCategory cnf k == "class" && aspects.hasClassContent entry.${k}) (
+    cnf:
+    let
+      category = aspects.keyCategory cnf;
+    in
+    entry:
+    builtins.filter (k: category k == "class" && aspects.hasClassContent entry.${k}) (
       builtins.attrNames entry
     );
 
@@ -352,6 +356,8 @@ let
       # One facts record per `project` call: each node's sites are a thunk in it, resolved at most
       # once however many nodes reach that node.
       facts = aspects.graphFacts cnf (values.aspects or { });
+      # Bound once: each `aspects.keyCategory cnf` application re-runs gen-aspects' whole cnf door.
+      classesOf = deliveryClassesOf cnf;
       # An applied instance body's sites, its anonymous content keyed under the instance id and each
       # named value keyed by its own sighting (gen-aspects `includeSitesOfInstance`).
       sitesOfInstance = aspects.includeSitesOfInstance cnf (values.aspects or { }) instances;
@@ -802,7 +808,7 @@ let
             entry (
               i
               // {
-                classes = builtins.seq refusedAt.${v} (deliveryClassesOf cnf (contentOf i));
+                classes = builtins.seq refusedAt.${v} (classesOf (contentOf i));
               }
             )
           )
@@ -1033,7 +1039,7 @@ let
               in
               {
                 inherit entry;
-                classes = deliveryClassesOf cnf entry;
+                classes = classesOf entry;
                 eid = item.cid or item.id;
               }
             ) elements
