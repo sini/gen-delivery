@@ -63,7 +63,12 @@ let
   };
   # THE SPY: the same calculus, its `resolve` tracing `label` once per call.
   genDelivery = import libSrc {
-    inherit aspects algebra prelude;
+    inherit
+      aspects
+      algebra
+      prelude
+      graph
+      ;
     scope = scope // {
       resolve =
         o: s: from:

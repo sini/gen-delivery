@@ -31,6 +31,12 @@
     gen-scope.url = "github:sini/gen-scope";
     gen-scope.inputs.gen-prelude.follows = "gen-prelude";
     gen-scope.inputs.gen-algebra.follows = "gen-algebra";
+    gen-scope.inputs.gen-graph.follows = "gen-graph";
+
+    # gen-graph, the fifth injected value: `forward`'s route-graph algorithms (ADR-0009). gen-scope
+    # follows it, so the run holds one instance.
+    gen-graph.url = "github:sini/gen-graph";
+    gen-graph.inputs.gen-prelude.follows = "gen-prelude";
   };
 
   outputs =
@@ -40,6 +46,7 @@
       gen-algebra,
       gen-prelude,
       gen-scope,
+      gen-graph,
       nixpkgs,
       ...
     }:
@@ -53,6 +60,7 @@
       genSchema = gen-aspects.inputs.gen-schema.lib;
 
       scope = gen-scope.lib;
+      graph = gen-graph.lib;
       genDeliveryWith =
         scope:
         import ../lib {
@@ -61,6 +69,7 @@
             aspects
             prelude
             scope
+            graph
             ;
         };
       genDelivery = genDeliveryWith scope;

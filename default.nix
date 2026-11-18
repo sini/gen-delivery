@@ -103,6 +103,7 @@ in
   aspects ? inputs.gen-aspects or (dep [ "gen-aspects" ]),
   prelude ? inputs.gen-prelude or (dep [ "gen-prelude" ]),
   scope ? inputs.gen-scope or (dep [ "gen-scope" ]),
+  graph ? inputs.gen-graph or (dep [ "gen-graph" ]),
 }:
 # THE BODY IS EAGER, AND THAT IS WHAT MAKES THE ENTRY CELL TOTAL RATHER THAN PARTIAL. `forced` forces
 # every wired dependency to WHNF before `./lib` sees it, so a default that cannot resolve is loud AT
@@ -124,6 +125,7 @@ let
       aspects
       prelude
       scope
+      graph
       ;
   };
   forced = builtins.deepSeq (builtins.mapAttrs (_: builtins.typeOf) deps) null;

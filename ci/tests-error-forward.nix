@@ -135,7 +135,7 @@ in
     # ── refusals at the target, each body-placed (G7') ──
     test-forward-cycle-names-its-routes-at-the-affected-target = {
       expr = cyc.realized.c.pewter;
-      expectedError.msg = exactly "${pre}: target c.pewter is affected by a forwarding cycle: gimp/g2l into c.lisle; lisle/l2g into c.gimp lie on a cycle, and the target receives what they carry";
+      expectedError.msg = exactly "${pre}: target c.pewter is affected by a forwarding cycle: lisle/l2g into c.gimp; gimp/g2l into c.lisle lie on a cycle, and the target receives what they carry";
     };
     test-forward-placement-conflict-names-the-occurrence-paths-and-routes = {
       expr = at [

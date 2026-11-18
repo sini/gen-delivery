@@ -2,31 +2,34 @@
 
 > **Library class: reference-grade.** Deletion requires a domain argument — wrong abstraction, subsumption by another construct, or theory-unsoundness; a usage count is inadmissible as a deletion ground (P7, 2026-08-17).
 
-The delivery-class realization surface. Four declared, unapplied root inputs (gen-algebra, gen-aspects,
-gen-prelude, gen-scope); substrate injected; nixpkgs-lib-free.
-`lib/default.nix` is the whole library — one file, because the row this executes calls the
-projection and the fold **one construct** and they are one: the realization predicate lives in the
-first half and the fold that trusts it lives in the second.
+The delivery-class realization surface. Five declared, unapplied root inputs (gen-algebra, gen-aspects,
+gen-graph, gen-prelude, gen-scope); substrate injected; nixpkgs-lib-free.
+`lib/default.nix` holds the projection and the fold as **one construct** — the realization
+predicate lives in the first half and the fold that trusts it lives in the second — and
+`lib/forward.nix` the data-only transformation between them, `project → forward → realize`.
 
 ## published surface
 
-`{ algebra, aspects, prelude, scope }` in; `{ project, realize, defaultLayerOrder }` out. Root `default.nix`'s
-`wire ? { deps, resolve, lock }: import ./lib deps` formal is what hands this `{ algebra, aspects, prelude, scope }`
+`{ algebra, aspects, prelude, scope, graph }` in; `{ project, forward, realize, defaultLayerOrder }` out. Root `default.nix`'s
+`wire ? { deps, resolve, lock }: import ./lib deps` formal is what hands this `{ algebra, aspects, prelude, scope, graph }`
 attrset to the library as `deps`, and it is also the shim's only outward channel — a formal is an
 INPUT channel and cannot carry a value out, so the lock-parameterised `follows` resolver rides out on
 the same record. Overriding `wire` is how a cell reads the shim's own formal-to-path map AND its own
 resolver without a fetch, a restated path or a transcribed fold.
 
-|                     | signature                                                                                                                                                                                                                                                                                                                             |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `project`           | `{ selectNodes ? null, deliveryClasses ? {}, instances ? {} } -> cnf -> values -> { aspects, nodes }`; options first and closed, `cnf` required (`null` is refused by name), `values` the subject; `deliveryClasses` is `{ <node> = { <authored class> = <delivery class>; }; }`; `instances` is gen-aspects' `instancesFor` relation |
-| `realize`           | `{ bindings ? {}, refinements ? {}, layerOrder ? defaultLayerOrder, extraModules ? {} } -> terminals -> projected -> { <class>.<node> = artifact; }`; `extraModules` is class-major, `{ <class>.<node> = [ module ]; }`                                                                                                               |
-| `defaultLayerOrder` | `[ "projection" "global" "refinement" ]`                                                                                                                                                                                                                                                                                              |
+|                     | signature                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `project`           | `{ selectNodes ? null, deliveryClasses ? {}, instances ? {} } -> cnf -> values -> { aspects, nodes }`; options first and closed, `cnf` required (`null` is refused by name), `values` the subject; `deliveryClasses` is `{ <node> = { <authored class> = <delivery class>; }; }`; `instances` is gen-aspects' `instancesFor` relation                                                                                                                                                  |
+| `forward`           | `{ routes ? {}, unresolved ? [] } -> terminals -> projected -> { projected; diagnostics; check; }`; `routes` is destination-addressed and class-major, `{ <class>.<node> = [ { name; producer; site; order; from = { class; node; select; }; recipe = { importsAt = [ segment ]; }; required ? true; } ]; }`; `select` is `"cell"` (declared plus received), `"declared"` or `{ occurrence = { node; class; id; }; }`; `check` refuses by name when evaluated and no target reaches it |
+| `realize`           | `{ bindings ? {}, refinements ? {}, layerOrder ? defaultLayerOrder, extraModules ? {} } -> terminals -> projected -> { <class>.<node> = artifact; }`; `extraModules` is class-major, `{ <class>.<node> = [ module ]; }`                                                                                                                                                                                                                                                                |
+| `defaultLayerOrder` | `[ "projection" "global" "refinement" ]`                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 
 `project.aspects` is the flat registry (`aspects.flatten values.aspects`, empty when there is no
 `aspects` surface). `project.nodes` is the per-node build projection,
 `{ <node> = { bindings = { node = <instance>; }; classes = { <delivery class> = [ deferredModule ]; }; }; }`,
 keyed by delivery class (the authored class unless `deliveryClasses` readdresses it at that node).
+Beside `nodes`, `project.occurrenceIds` is `{ <node> = { <delivery class> = [ <instance id> ]; }; }`, positional with
+`classes`: each element's contributing instance, the occurrence attribution `forward` reads.
 A consumer may extend an entry with `passthrough`; nothing here emits it.
 
 ## the two refusals, and why they are not one
@@ -116,17 +119,18 @@ projection, and the projection from the values.
 
 ## what the suites hold
 
-| suite                   | subject                                                                                                                                                                                                |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `declared-content`      | the Rider through a REAL gen-aspects schema — the rendering half                                                                                                                                       |
-| `realization-predicate` | the Rider through a HAND-BUILT registry — the predicate half, including the fabricated-empty state gen-aspects never produces, both wrong-category arms, and the input-absence / key-absence pair      |
-| `carriage`              | the terminal contract, the split weld, the rename observed at the SITES, and the target-facing key                                                                                                     |
-| `contribution-order`    | the declared layer order, the permutation pair, namespace separation                                                                                                                                   |
-| `class-discipline`      | no implicit crossing; the addressed crossing arrives at its class only (three terminals); the address check forces no module; content with no terminal refuses on every read, and forces no class list |
-| `extent`                | the accessor's laziness and its per-class narrowness                                                                                                                                                   |
-| `class-content`         | class bodies never evaluated (as a PAIR), multiple definitions per class per node                                                                                                                      |
-| `purity`                | no nixpkgs anywhere under `lib/`                                                                                                                                                                       |
-| `doors`                 | the two MIXED doors refuse a missing field, an unknown option and a non-set CATCHABLY, naming the door (goldens: `ci/tests-error.nix`)                                                                 |
+| suite                   | subject                                                                                                                                                                                                                                                                  |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `declared-content`      | the Rider through a REAL gen-aspects schema — the rendering half                                                                                                                                                                                                         |
+| `realization-predicate` | the Rider through a HAND-BUILT registry — the predicate half, including the fabricated-empty state gen-aspects never produces, both wrong-category arms, and the input-absence / key-absence pair                                                                        |
+| `carriage`              | the terminal contract, the split weld, the rename observed at the SITES, and the target-facing key                                                                                                                                                                       |
+| `contribution-order`    | the declared layer order, the permutation pair, namespace separation                                                                                                                                                                                                     |
+| `class-discipline`      | no implicit crossing; the addressed crossing arrives at its class only (three terminals); the address check forces no module; content with no terminal refuses on every read, and forces no class list                                                                   |
+| `extent`                | the accessor's laziness and its per-class narrowness                                                                                                                                                                                                                     |
+| `class-content`         | class bodies never evaluated (as a PAIR), multiple definitions per class per node                                                                                                                                                                                        |
+| `purity`                | no nixpkgs anywhere under `lib/`                                                                                                                                                                                                                                         |
+| `forward`               | the first forwarding slice through the real `forward` and `realize`: (a″) emission, order, W1 vs W2, cycles vs legal exchange, key-scoped relays (G5r, K2, K3), occurrence-once, body-placed faults, C2, laziness, the grammar; messages in `ci/tests-error-forward.nix` |
+| `doors`                 | the two MIXED doors refuse a missing field, an unknown option and a non-set CATCHABLY, naming the door (goldens: `ci/tests-error.nix`)                                                                                                                                   |
 
 ★ **The rename cells are SITE-SCOPED, and that is not stylistic.** They read the key set the fold
 actually emits, never tokens in a file. A token-scoped version of the same claim goes green by
@@ -171,17 +175,17 @@ already applied it — re-run and read `0 changed`.
 **aborts here**. The library is a function of `{ algebra, aspects, prelude, scope }`, so the flake's `lib` output is
 a lambda and the apply reads *"expected a set but found a function"*. The check has to supply a
 substrate, and it supplies the ACCEPTANCE RUN's own — `ci/flake.nix`'s `gen-algebra`,
-`gen-aspects`, `gen-scope` and the gen-prelude reached through gen-aspects, resolved through `ci/flake.lock` — rather than pinning a second one, which would make
+`gen-aspects`, `gen-scope`, `gen-graph` and the gen-prelude reached through gen-aspects, resolved through `ci/flake.lock` — rather than pinning a second one, which would make
 the checked surface a different construction from the tested one. There is no `ci/repl.nix` here, so
 the splice is inline; resolving a local flake from an expression is what `--impure` pays for. From
 the repository root:
 
 ```sh
-nix eval --json --impure --expr 'let ci = builtins.getFlake (toString ./ci); in builtins.attrNames (import ./lib { algebra = ci.inputs.gen-algebra.lib; aspects = ci.inputs.gen-aspects.lib; prelude = ci.inputs.gen-aspects.inputs.gen-prelude.lib; scope = ci.inputs.gen-scope.lib; })'
+nix eval --json --impure --expr 'let ci = builtins.getFlake (toString ./ci); in builtins.attrNames (import ./lib { algebra = ci.inputs.gen-algebra.lib; aspects = ci.inputs.gen-aspects.lib; prelude = ci.inputs.gen-aspects.inputs.gen-prelude.lib; scope = ci.inputs.gen-scope.lib; graph = ci.inputs.gen-graph.lib; })'
 ```
 
 Current output (verbatim):
 
 ```json
-["defaultLayerOrder","project","realize"]
+["defaultLayerOrder","forward","project","realize"]
 ```

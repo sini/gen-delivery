@@ -269,11 +269,250 @@ let
     extraTerminals = xT;
   };
 
+  # ── (a″): one function-form module per ROUTE at its inner path ──
+  # A two-level receiver `f`: frame (submodule) > spools (attrsOf) > thread (lines). Items reach the
+  # mid cell x.tux at spools.pewter; tux's whole x cell reaches f.pewter at `frame` (W1). Measured
+  # hand-built on this receiver before the cells were written: one module at spools.pewter holding
+  # [ A B ] reads "B\nA\nR"; two modules [ A ], [ B ] read "A\nB\nR".
+  frameRecv = {
+    options.frame = lib.mkOption {
+      type = lib.types.submoduleWith {
+        shorthandOnlyDefinesConfig = true;
+        modules = [
+          {
+            options.spools = lib.mkOption {
+              type = lib.types.attrsOf (
+                lib.types.submoduleWith {
+                  shorthandOnlyDefinesConfig = true;
+                  modules = [
+                    {
+                      options.thread = lib.mkOption {
+                        type = lib.types.lines;
+                        default = "";
+                      };
+                    }
+                  ];
+                }
+              );
+              default = { };
+            };
+          }
+        ];
+      };
+      default = { };
+    };
+  };
+  frameT = xT // {
+    f =
+      { modules, ... }:
+      (lib.evalModules { modules = [ frameRecv ] ++ modules; }).config.frame.spools.pewter.thread;
+  };
+  pp = [
+    "spools"
+    "pewter"
+  ];
+  nested =
+    { cell, items }:
+    run {
+      cells = {
+        pewter.f = [
+          [
+            "own"
+            { frame.spools.pewter.thread = "R"; }
+          ]
+        ];
+        tux.x = [ ];
+        damask.x = cell;
+        faille.x = [
+          [
+            "ob2"
+            (t "B")
+          ]
+        ];
+      };
+      routes = {
+        x.tux = items;
+        f.pewter = [
+          (route {
+            name = "embed";
+            order = [ 0 ];
+            from = x "tux";
+            select = "cell";
+            path = [ "frame" ];
+          })
+        ];
+      };
+      extraTerminals = frameT;
+    };
+  item2 =
+    cellOrder:
+    nested {
+      cell = map (id: [
+        id
+        (t (if id == "oa" then "A" else "B"))
+      ]) cellOrder;
+      items = [
+        (route {
+          name = "both";
+          order = [ 0 ];
+          from = x "damask";
+          path = pp;
+        })
+      ];
+    };
+  twoItems = nested {
+    cell = [
+      [
+        "oa"
+        (t "A")
+      ]
+    ];
+    items = [
+      (route {
+        name = "ra";
+        order = [ 0 ];
+        from = x "damask";
+        path = pp;
+      })
+      (route {
+        name = "rb";
+        order = [ 1 ];
+        from = x "faille";
+        path = pp;
+      })
+    ];
+  };
+  fThread = r: r.realized.f.pewter;
+
+  # ── G5r / K2 / K3: the relay cells (class k, a discarding terminal; read at Z's wrapper) ──
+  # X declares ox, P declares op; P ⇄ Q exchange whole cells (a genuine cycle carrying op). W is an
+  # unrelated sibling whose bucket holds a route that throws when forced (the forcing-safe negative
+  # control); V is an unrelated sibling with a valid route (the sibling-positive control).
+  relayCells = {
+    X = [
+      [
+        "ox"
+        { t = "ox"; }
+      ]
+    ];
+    P = [
+      [
+        "op"
+        { t = "op"; }
+      ]
+    ];
+    Q = [ ];
+    Y = [ ];
+    Z = [ ];
+    W = [ ];
+    V = [ ];
+    S = [
+      [
+        "os"
+        { t = "os"; }
+      ]
+    ];
+  };
+  rk =
+    name: order: node: select:
+    route {
+      inherit name order select;
+      from = {
+        class = "k";
+        inherit node;
+      };
+      path = [ ];
+    };
+  relayK = id: node: rk "z" [ 0 ] "Y" (occ node "k" id);
+  relayRunWith =
+    sentinel: ks:
+    run {
+      cells = builtins.mapAttrs (_: cs: { k = cs; }) relayCells;
+      routes.k =
+        ks
+        // {
+          V = [ (rk "v" [ 0 ] "S" "declared") ];
+        }
+        // (
+          if sentinel then
+            { W = [ (throw "forward test: an unrelated sibling's route was forced") ]; }
+          else
+            { }
+        );
+      extraTerminals.k = _: null;
+    };
+  relayRun = relayRunWith true;
+  wrapAt =
+    r: n:
+    builtins.elemAt r.projected.nodes.${n}.classes.k (
+      builtins.length r.projected.nodes.${n}.classes.k - 1
+    );
+  readZ = r: map (m: m.t) (wrapAt r "Z" { }).imports;
+  tryZ =
+    r:
+    let
+      v = builtins.tryEval (builtins.deepSeq (readZ r) (readZ r));
+    in
+    if v.success then v.value else "REFUSED";
+  base = {
+    Q = [ (rk "pq" [ 0 ] "P" "cell") ];
+    Y = [
+      (rk "xy" [ 0 ] "X" "cell")
+      (rk "py" [ 1 ] "P" "cell")
+    ];
+  };
+  relayRoutes = {
+    relay-ox = (
+      base
+      // {
+        P = [ (rk "qp" [ 0 ] "Q" "cell") ];
+        Z = [ (relayK "ox" "X") ];
+      }
+    );
+    relay-op = (
+      base
+      // {
+        P = [ (rk "qp" [ 0 ] "Q" "cell") ];
+        Z = [ (relayK "op" "P") ];
+      }
+    );
+    relay-ox-nocycle = (base // { Z = [ (relayK "ox" "X") ]; });
+    relay2-ox = {
+      Q = [ (rk "pq" [ 0 ] "P" "cell") ];
+      P = [ (rk "qp" [ 0 ] "Q" "cell") ];
+      X = [ (rk "px" [ 0 ] "P" "cell") ];
+      Y = [ (rk "xy" [ 0 ] "X" "cell") ];
+      Z = [ (relayK "ox" "X") ];
+    };
+    relay2-op = {
+      Q = [ (rk "pq" [ 0 ] "P" "cell") ];
+      P = [ (rk "qp" [ 0 ] "Q" "cell") ];
+      X = [ (rk "px" [ 0 ] "P" "cell") ];
+      Y = [ (rk "xy" [ 0 ] "X" "cell") ];
+      Z = [ (relayK "op" "P") ];
+    };
+    relay3-ox = {
+      Y = [ (rk "xy" [ 0 ] "X" "cell") ];
+      X = [ (rk "yx" [ 0 ] "Y" "cell") ];
+      Z = [ (relayK "ox" "X") ];
+    };
+    relay4-op = {
+      Q = [ (rk "pq" [ 0 ] "P" "cell") ];
+      P = [ (rk "qp" [ 0 ] "Q" "cell") ];
+      Z = [ (rk "z" [ 0 ] "P" (occ "P" "k" "op")) ];
+    };
+  };
+  relays = builtins.mapAttrs (_: relayRun) relayRoutes;
+  relaysNoSentinel = builtins.mapAttrs (_: relayRunWith false) relayRoutes;
+
   # ── G4 / G5: cycles, legal two-way exchange, taint ──
   # gimp ⇄ lisle, both W1, both with a terminal: a genuine cycle. pewter receives W1 from lisle (one
   # hop), damask W1 from pewter (two hops); faille relays gimp's declared occurrence from lisle (an
   # occurrence relay of a tainted occurrence); bouclé relays it on from faille (two hops); moire
-  # takes lisle's OWN declared occurrence by an item route (co-location: never tainted).
+  # takes lisle's OWN declared occurrence by an item route: the cycle carries it (l2g), so it is
+  # tainted, and the walk does not stop at its declaring cell (K3, the relay4-op shape). velour
+  # takes pewter's own declared occurrence: pewter RECEIVES tainted content and that occurrence is
+  # carried by no cyclic route (co-location: never tainted).
   cyc = run {
     cells = {
       gimp.c = [
@@ -316,6 +555,12 @@ let
         [
           "own"
           (own "moire")
+        ]
+      ];
+      velour.c = [
+        [
+          "own"
+          (own "velour")
         ]
       ];
     };
@@ -380,6 +625,15 @@ let
           order = [ 0 ];
           from = c "lisle";
           select = occ "lisle" "c" "ol";
+          path = [ ];
+        })
+      ];
+      velour = [
+        (route {
+          name = "coloc";
+          order = [ 0 ];
+          from = c "pewter";
+          select = occ "pewter" "c" "own";
           path = [ ];
         })
       ];
@@ -1236,6 +1490,84 @@ in
       expected = "A\nR";
     };
 
+    # ── (a″) ──
+    # One route carrying two occurrences: ONE module at its inner path holding them in the cell's
+    # order, both include orders. RED: the per-occurrence (a′) emission reads the other value.
+    test-a2-one-route-two-occurrences-one-module-cell-order = {
+      expr = map (o: fThread (item2 o)) [
+        [
+          "oa"
+          "ob"
+        ]
+        [
+          "ob"
+          "oa"
+        ]
+      ];
+      expected = [
+        "B\nA\nR"
+        "A\nB\nR"
+      ];
+    };
+    # Two routes, one occurrence each: one module per route, in declaration order. RED: arm (a) at
+    # every hop groups them into one module, "B\nA\nR".
+    test-a2-two-routes-two-modules-declaration-order = {
+      expr = fThread twoItems;
+      expected = "A\nB\nR";
+    };
+
+    # ── G5r / K2 / K3: relays out of a cell that receives tainted content ──
+    # Untainted ox relayed out of a cell whose W1 inflow also carries the cyclic op: delivered.
+    # RED (build v0 F3, the head before K2): refused. RED (`lit`, the key scope in the analysis
+    # only): an uncatchable stack overflow, a suite abort.
+    test-g5r-untainted-key-relayed-out-of-a-tainted-cell-is-delivered = {
+      expr = map (c: tryZ relays.${c}) [
+        "relay-ox"
+        "relay-ox-nocycle"
+        "relay2-ox"
+      ];
+      expected = [
+        [ "ox" ]
+        [ "ox" ]
+        [ "ox" ]
+      ];
+    };
+    # The tainted key refuses: relayed through a tainted cell, out of its declaring cell (K3,
+    # relay4-op), and carried by a route that is itself cyclic (relay3-ox). RED (K3: the walk stops
+    # at a declaring cell): relay4-op delivers [ "op" ].
+    test-g5r-tainted-key-relays-refuse = {
+      expr = map (c: tryZ relays.${c}) [
+        "relay-op"
+        "relay2-op"
+        "relay3-ox"
+        "relay4-op"
+      ];
+      expected = [
+        "REFUSED"
+        "REFUSED"
+        "REFUSED"
+        "REFUSED"
+      ];
+    };
+    # Forcing-safe negative control: no relay read forces the unrelated sibling W's route, and the
+    # sibling-positive control: V's valid route delivers beside every refusing Z.
+    test-g5r-unrelated-siblings-unforced-and-usable = {
+      expr = builtins.mapAttrs (_: r: map (m: m.t) (wrapAt r "V" { }).imports) relays;
+      expected = builtins.mapAttrs (_: _: [ "os" ]) relays;
+    };
+    test-g5r-refusals-name-the-cycle = {
+      expr = builtins.mapAttrs (_: r: builtins.elem "k.Z" r.diagnostics.affected) relaysNoSentinel;
+      expected = {
+        relay-ox = false;
+        relay-ox-nocycle = false;
+        relay2-ox = false;
+        relay-op = true;
+        relay2-op = true;
+        relay3-ox = true;
+        relay4-op = true;
+      };
+    };
+
     # ── G14: W1 vs W2 ──
     # RED: a W2 reading of "cell" drops the received A, "B\nR".
     test-g14-w2-carries-declared-only = {
@@ -1269,7 +1601,8 @@ in
     };
 
     # ── G5: transitive taint, W1 and occurrence relays; co-location never taints ──
-    # RED: an omitted-relay mutant delivers at boucle / damask; a co-location mutant refuses moire.
+    # RED: an omitted-relay mutant delivers at boucle / damask; a co-location mutant refuses velour;
+    # the stop-at-a-declaring-cell head (K3) delivers moire.
     test-g5-taint-reaches-every-relay-target = {
       expr = builtins.mapAttrs (n: _: ok cyc.realized.c.${n}) {
         pewter = 1;
@@ -1285,12 +1618,23 @@ in
       };
     };
     test-g5-co-located-independent-item-is-delivered = {
-      expr = cyc.realized.c.moire.moire.thread;
+      expr = cyc.realized.c.velour.velour.thread;
       expected = "R";
     };
     test-g5-co-located-item-is-not-affected = {
-      expr = builtins.elem "c.moire" cyc.diagnostics.affected;
+      expr = builtins.elem "c.velour" cyc.diagnostics.affected;
       expected = false;
+    };
+    # K3: an item route out of the cell that declares it, while a cycle carries that occurrence.
+    test-k3-item-out-of-its-declaring-cell-on-a-cycle-refuses = {
+      expr = {
+        moire = ok cyc.realized.c.moire;
+        affected = builtins.elem "c.moire" cyc.diagnostics.affected;
+      };
+      expected = {
+        moire = false;
+        affected = true;
+      };
     };
     test-g4-diagnostics-name-the-cycle = {
       expr = cyc.diagnostics.cycles;
@@ -1576,11 +1920,11 @@ in
     test-check-is-not-reachable-from-a-target = {
       expr = {
         check = (builtins.tryEval cyc.check).success;
-        moire = ok cyc.realized.c.moire;
+        velour = ok cyc.realized.c.velour;
       };
       expected = {
         check = false;
-        moire = true;
+        velour = true;
       };
     };
   };

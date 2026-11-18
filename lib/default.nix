@@ -77,6 +77,9 @@
   aspects,
   prelude,
   scope,
+  # gen-graph: the route graph's reachability and cyclic set are its algorithms (ADR-0009), read by
+  # `forward` alone.
+  graph,
 }:
 let
   # ── THE DECLARED CONTRIBUTION ORDER ──
@@ -1525,7 +1528,7 @@ let
       builtins.seq _extraModulesCheck (builtins.seq _contentCheck realized)
     );
   # `forward` — the first forwarding slice, `project → forward → realize` (lib/forward.nix).
-  inherit (import ./forward.nix { inherit prelude; }) forward;
+  inherit (import ./forward.nix { inherit prelude graph; }) forward;
 in
 {
   inherit project forward realize;

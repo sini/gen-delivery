@@ -48,25 +48,28 @@
 #
 # ── THE ONE ROUTE DESCRIPTION (D2) ──
 # A route r into T selecting at source S has an edge to every route r' into S whose delivery r
-# selects: every one for "cell"; none for "declared" or for an occurrence S declares; for a relay of
-# L, those routes into S that deliver L. Carriage follows these edges and nothing else, and the
+# selects: every one for "cell"; none for "declared"; for an occurrence L (declared at S or relayed),
+# those routes into S that deliver L. Carriage follows these edges and nothing else, and the
 # cycle analysis reads the same edges: a route LIES ON A CYCLE when it is reachable from itself in a
-# nonempty path (gen-graph's `selfReachable` construction, a `genericClosure` from the successors);
-# a target is AFFECTED when its closure holds a cycle. Two routes in opposite directions carrying
+# nonempty path (gen-graph's `cycles` over the closed set of states the target reaches); a target is
+# AFFECTED when its closure holds a cycle. An occurrence relay of L is analysed AND carried over
+# key-scoped (route, L) states, which follow only the routes delivering L and do not stop at a cell
+# that declares it. Two routes in opposite directions carrying
 # independent declared occurrences form no edge, so legal two-way exchange is no cycle. Opaque
 # evaluation dependencies (a module reading a peer through `extent`) are not routes: nothing here
 # claims them.
 #
-# ── EMISSION: ONE WRAPPER PER TARGET, ARM (a) INSIDE IT ──
+# ── EMISSION: ONE WRAPPER PER TARGET, (a″) INSIDE IT ──
 # A target (c, n) with a non-empty bucket receives ONE function-form module appended to its own
-# class list. Its body imports one function-form module per resolved path,
-# `<path> = _: { imports = <groups>; }`, each path's groups in the received order (routes by their
-# declaration order; a W1 cell's received occurrences before its declared ones, recursively),
-# each path at the position of its first occurrence in that order. Every refusal raised while
-# forming them (a cycle, a placement conflict, a duplicate route, a tie, a refusing segment, an
-# occurrence the source does not hold) is BODY-PLACED: the list spine reads the bucket's emptiness
-# only, so `realize`'s per-class spine never forces a forwarding decision and an unrelated sibling
-# stays usable. `forward` adds no module `key`: native dedup is the module system's.
+# class list. Inside it, at the target's own level, one function-form module per resolved path
+# (`<path> = _: { imports = …; }`, arm (a)), each at the position of its first occurrence in the
+# received order (routes by their declaration order; a W1 cell's received occurrences before its
+# declared ones, recursively). Below the target, ONE function-form module per ROUTE at its inner
+# path, holding that route's occurrences in the cell's order: den v1's M1 arm, one module per forward.
+# Every refusal raised while forming them (a cycle, a placement conflict, a duplicate route, a tie, a
+# refusing segment, an occurrence the source does not hold) is BODY-PLACED: the list spine reads the
+# bucket's emptiness only, so `realize`'s per-class spine never forces a forwarding decision and an
+# unrelated sibling stays usable. `forward` adds no module `key`: native dedup is the module system's.
 #
 # ── CONSUMED CONTENT IS NOT DROPPED CONTENT (C2, arm i) ──
 # A class with no terminal realizes nowhere, and `realize` refuses its content by name. Content a
@@ -75,7 +78,7 @@
 # Whatever is left refuses through `realize`'s own content check, unchanged. Reading such a cell
 # inverts the destination table: it forces every route's `from` and `select` (structure), never a
 # group or a module.
-{ prelude }:
+{ prelude, graph }:
 let
   inherit (builtins)
     attrNames
@@ -85,7 +88,6 @@ let
     filter
     foldl'
     genList
-    genericClosure
     groupBy
     head
     isAttrs
@@ -299,6 +301,12 @@ let
         ((declaredKeys.${n} or { }).${c} or { }) ? ${k};
 
       # ── THE ROUTE GRAPH (precise edges, one description for carriage and analysis) ──
+      # A state is a route `r` into (c, n), keyed `toJSON [ c n producer name ]`; an occurrence relay of
+      # L walks KEY-SCOPED states (route, L), keyed with L appended (K2): from such a state the walk
+      # continues only into the routes that deliver L into the route's source cell, and it does NOT
+      # stop at a cell that declares L (K3), since a cycle that carries L there taints it. The graph
+      # algorithms (reachability, the cyclic set) are gen-graph's (ADR-0009); keys are decoded back to
+      # states lazily, so a walk touches only the buckets it reaches.
       item =
         c: n: r0:
         let
@@ -313,88 +321,92 @@ let
           ];
           inherit c n r;
         };
-      upstream = x: map (item x.r.from.class x.r.from.node) (bucketOf x.r.from.class x.r.from.node);
-      kindOf = x: selKind x.r;
-      # Does route `u` deliver occurrence `k` into its target? Cycle-safe: a closure over the W1
-      # routes upstream of `u`.
-      deliversK =
-        u: k:
-        any
-          (
-            w:
-            let
-              kw = kindOf w;
-            in
-            if kw == "occurrence" then refKey w.r == k else declaresKey w.r.from.class w.r.from.node k
-          )
-          (genericClosure {
-            startSet = [ u ];
-            operator = w: if kindOf w == "cell" then upstream w else [ ];
-          });
-      succ =
-        x:
+      tagK =
+        k: x:
+        x
+        // {
+          rk = k;
+          key = toJSON [
+            x.c
+            x.n
+            x.r.producer
+            x.r.name
+            k
+          ];
+        };
+      rootKey =
+        c: n:
+        toJSON [
+          "root"
+          c
+          n
+        ];
+      stateOf =
+        key:
         let
-          k = kindOf x;
+          j = builtins.fromJSON key;
+          c = elemAt j 0;
+          n = elemAt j 1;
         in
-        if k == "declared" then
-          [ ]
-        else if k == "cell" then
-          upstream x
+        if head j == "root" then
+          {
+            inherit key;
+            root = true;
+            c = elemAt j 1;
+            n = elemAt j 2;
+          }
         else
           let
-            key = refKey x.r;
+            x = head (
+              filter (x: x.r.producer == elemAt j 2 && x.r.name == elemAt j 3) (map (item c n) (bucketOf c n))
+            );
           in
-          if declaresKey x.r.from.class x.r.from.node key then
-            [ ]
-          else
-            filter (u: deliversK u key) (upstream x);
-      selfReachable =
-        x:
-        any (y: y.key == x.key) (genericClosure {
-          startSet = succ x;
-          operator = succ;
-        });
-      closureOf =
-        c: n:
-        genericClosure {
-          startSet = map (item c n) (bucketOf c n);
-          operator = succ;
-        };
-      # Whether a closure holds a cycle: a depth-first walk, a route met again on the current path.
-      hasCycle =
-        c: n:
+          if length j == 5 then tagK (elemAt j 4) x else x;
+      upstream = x: map (item x.r.from.class x.r.from.node) (bucketOf x.r.from.class x.r.from.node);
+      kindOf = x: selKind x.r;
+      keysOf = map (x: x.key);
+      # The W1 routes upstream of `u`, `u` included: whatever reaches `u`'s target whole.
+      w1Succ =
+        key:
         let
-          visit =
-            st: v:
-            if st.found || st.done ? ${v.key} then
-              st
-            else if st.path ? ${v.key} then
-              st // { found = true; }
-            else
-              let
-                st1 = foldl' visit (
-                  st
-                  // {
-                    path = st.path // {
-                      ${v.key} = true;
-                    };
-                  }
-                ) (succ v);
-              in
-              st1
-              // {
-                path = st.path;
-                done = st1.done // {
-                  ${v.key} = true;
-                };
-              };
+          x = stateOf key;
         in
-        (foldl' visit {
-          found = false;
-          path = { };
-          done = { };
-        } (map (item c n) (bucketOf c n))).found;
-      cyclicIn = c: n: map (x: "${rName x.r} into ${at x.c x.n}") (filter selfReachable (closureOf c n));
+        if kindOf x == "cell" then upstream x else [ ];
+      w1Closure = u: [ u ] ++ map stateOf (graph.reachableVia w1Succ u.key);
+      # Does route `u` deliver occurrence `k` into its target? Read over `u`'s W1 closure.
+      deliversK =
+        u: k:
+        any (
+          w: if kindOf w == "occurrence" then refKey w.r == k else declaresKey w.r.from.class w.r.from.node k
+        ) (w1Closure u);
+      succ =
+        x:
+        if x ? root then
+          map (item x.c x.n) (bucketOf x.c x.n)
+        else if x ? rk then
+          if kindOf x == "declared" then [ ] else map (tagK x.rk) (filter (u: deliversK u x.rk) (upstream x))
+        else
+          let
+            k = kindOf x;
+          in
+          if k == "declared" then
+            [ ]
+          else if k == "cell" then
+            upstream x
+          else
+            map (tagK (refKey x.r)) (filter (u: deliversK u (refKey x.r)) (upstream x));
+      succK = key: succ (stateOf key);
+      # The target's closure as a closed accessor, and its cyclic states (gen-graph `cycles`).
+      closureKeys = c: n: [ (rootKey c n) ] ++ graph.reachableVia succK (rootKey c n);
+      cyclicKeys =
+        c: n:
+        graph.cycles {
+          nodes = closureKeys c n;
+          edges = key: keysOf (succK key);
+        };
+      hasCycle = c: n: cyclicKeys c n != [ ];
+      showState = x: "${rName x.r} into ${at x.c x.n}${if x ? rk then " (carrying ${x.rk})" else ""}";
+      cyclicIn = c: n: map (k: showState (stateOf k)) (cyclicKeys c n);
 
       # ── THE ASSEMBLED BUCKET (D4 per R, then the declared order; a tie refuses) ──
       assembled =
@@ -525,7 +537,7 @@ let
       received = c: n: (receivedMemo.${c} or { }).${n} or [ ];
       # The selected set of one route at its source cell, in the cell's order: each occurrence with
       # the placement `sub` it already carries in that cell. A W1 adapter embeds the cell AS IT IS
-      # REALIZED THERE, so a received occurrence keeps its arrival path below the route's own; a
+      # REALIZED THERE, so a received occurrence keeps its arrival chunks below the route's own; a
       # declared occurrence and an occurrence relay are placed afresh (placement is destination
       # metadata, never identity).
       selected =
@@ -550,39 +562,43 @@ let
         else
           let
             key = refKey r;
+            got = receivedDK fc fn key;
           in
           if declaresKey fc fn key then
-            fresh [ ((declaredKeys.${fn}).${fc}).${key} ]
+            fresh [ (declOcc fc fn key) ]
+          else if got == null then
+            throw "${pre}: route ${rName r}: selects occurrence ${key}, which source cell ${at fc fn} neither declares nor receives"
           else
-            let
-              got = receivedK fc fn key;
-            in
-            if got == null then
-              throw "${pre}: route ${rName r}: selects occurrence ${key}, which source cell ${at fc fn} neither declares nor receives"
-            else
-              fresh [ got ];
-      # An arrival's placement is a list of CHUNKS, one per hop from the target down: the route's own
-      # resolved path, then what the occurrence carried in the embedded cell. An empty path adds no
-      # structure (content at a cell's root lands at the point the cell is embedded), so it is no
-      # chunk.
+            fresh [ got.occ ];
+      # An arrival's placement is a list of CHUNKS, one per hop from the target down, each the hop's
+      # route and its resolved path: the route's own, then what the occurrence carried in the embedded
+      # cell. An empty path adds no structure (content at a cell's root lands where the cell is
+      # embedded), so it is no chunk.
+      chunk = c: n: r: occ: {
+        route = toJSON [
+          c
+          n
+          r.producer
+          r.name
+        ];
+        path = pathOf c n r occ;
+      };
+      place = c: n: r: occ: sub: {
+        inherit occ r;
+        chunks = filter (h: h.path != [ ]) ([ (chunk c n r occ) ] ++ sub);
+      };
       arrivals =
         c: n: rs:
-        concatMap (
-          r:
-          map (x: {
-            inherit (x) occ;
-            inherit r;
-            chunks = filter (p: p != [ ]) ([ (pathOf c n r x.occ) ] ++ x.sub);
-          }) (selected r)
-        ) rs;
-      showPath = chunks: concatStringsSep "." (builtins.concatLists chunks);
+        concatMap (r: map (x: place c n r x.occ x.sub) (selected r)) rs;
+      pathsOf = a: map (h: h.path) a.chunks;
+      showPath = a: concatStringsSep "." (builtins.concatLists (pathsOf a));
       # Occurrence-once (T2) after placement consistency (A11): one D at one target at two resolved
       # placements refuses by name; otherwise the first arrival in the declared order stands.
       settle =
         c: n: as:
         let
           byD = groupBy (a: a.occ.key) as;
-          conflict = filter (k: length (uniqueOrdered (map (a: toJSON a.chunks) byD.${k})) > 1) (
+          conflict = filter (k: length (uniqueOrdered (map (a: toJSON (pathsOf a)) byD.${k})) > 1) (
             attrNames byD
           );
           keys = uniqueOrdered (map (a: a.occ.key) as);
@@ -593,30 +609,60 @@ let
             as' = byD.${k};
           in
           throw "${pre}: occurrence ${k} arrives at target ${at c n} at ${
-            toString (length (uniqueOrdered (map (a: toJSON a.chunks) as')))
-          } paths (${concatStringsSep ", " (uniqueOrdered (map (a: showPath a.chunks) as'))}; routes ${
+            toString (length (uniqueOrdered (map (a: toJSON (pathsOf a)) as')))
+          } paths (${concatStringsSep ", " (uniqueOrdered (map showPath as'))}; routes ${
             concatStringsSep ", " (map (a: rName a.r) as')
           })"
         else
           map (k: head byD.${k}) keys;
       receivedAt = c: n: settle c n (arrivals c n (assembled c n));
-      # One occurrence's arrival at (c, n), following only the routes that deliver it.
-      receivedK =
+      # ── KEY-SCOPED CARRIAGE (K2): one occurrence's arrival at (c, n), computed only through the
+      # routes that deliver it, never by forcing a W1 source cell's whole received set ──
+      declOcc =
+        fc: fn: k:
+        ((declaredKeys.${fn}).${fc}).${k};
+      arrK =
+        c: n: r: k:
+        let
+          fc = r.from.class;
+          fn = r.from.node;
+          kd = selKind r;
+          viaSource =
+            keepSub:
+            if declaresKey fc fn k then
+              [ (place c n r (declOcc fc fn k) [ ]) ]
+            else
+              let
+                d = receivedDK fc fn k;
+              in
+              if d == null then [ ] else [ (place c n r d.occ (if keepSub then d.chunks else [ ])) ];
+        in
+        if kd == "declared" then
+          (if declaresKey fc fn k then [ (place c n r (declOcc fc fn k) [ ]) ] else [ ])
+        else if kd == "cell" then
+          viaSource true
+        else if refKey r != k then
+          [ ]
+        else
+          viaSource false;
+      receivedDK =
         c: n: k:
         let
           rs = filter (r: deliversK (item c n r) k) (assembled c n);
-          as = filter (a: a.occ.key == k) (arrivals c n rs);
+          as = concatMap (r: arrK c n r k) rs;
         in
-        if as == [ ] then null else (head (settle c n as)).occ;
+        if as == [ ] then null else head (settle c n as);
 
-      # ── EMISSION: arm (a) at every hop ──
-      # At one level, in the delivered order: an occurrence whose placement ends here contributes its
-      # group verbatim and contiguous; the occurrences continuing below one path share ONE
-      # function-form module at that path, at the position of the first of them.
-      level =
-        ds:
+      # ── EMISSION (a″) ──
+      # At the realized TARGET's own level, arm (a): one function-form module per resolved path, at
+      # the position of the first occurrence there, holding everything placed below that path. Below
+      # it, ONE function-form module per ROUTE at its inner path, holding that route's occurrences in
+      # the cell's order (each group verbatim and contiguous), routes in their declaration order: den
+      # v1's M1 arm, one module per forward. A declared occurrence's group enters verbatim.
+      emitLevel =
+        tagOf: ds:
         let
-          tag = d: if d.chunks == [ ] then "o" + d.occ.key else "p" + toJSON (head d.chunks);
+          tag = d: if d.chunks == [ ] then "o" + d.occ.key else tagOf (head d.chunks);
           tags = uniqueOrdered (map tag ds);
           byT = groupBy tag ds;
         in
@@ -630,11 +676,20 @@ let
             d0.occ.group
           else
             [
-              (setAttrByPath (head d0.chunks) (_: {
-                imports = level (map (d: d // { chunks = builtins.tail d.chunks; }) its);
+              (setAttrByPath (head d0.chunks).path (_: {
+                imports = inner (map (d: d // { chunks = builtins.tail d.chunks; }) its);
               }))
             ]
         ) tags;
+      inner = emitLevel (
+        h:
+        "r"
+        + toJSON [
+          h.route
+          h.path
+        ]
+      );
+      level = emitLevel (h: "p" + toJSON h.path);
 
       # ── THE TARGET'S WRAPPER BODY ──
       forwardedModules =
@@ -683,49 +738,44 @@ let
             }) (filter (x: kindOf x == "occurrence") xs)
           );
         };
-      # Every key delivered into (c, n), structurally: a closure over the W1 routes upstream.
+      # Every key delivered into (c, n), structurally: over the cells whose content reaches it whole.
+      cellKey =
+        c: n:
+        toJSON [
+          c
+          n
+        ];
+      cellsWhole =
+        key:
+        let
+          j = builtins.fromJSON key;
+          cc = elemAt j 0;
+          nn = elemAt j 1;
+        in
+        concatMap (
+          r:
+          if selKind (checkRoute cc nn r) == "cell" then
+            [ { key = cellKey r.from.class r.from.node; } ]
+          else
+            [ ]
+        ) (bucketOf cc nn);
       keysInto =
         c: n:
-        concatMap
-          (
-            cell:
-            concatMap (
-              r:
-              let
-                k = selKind (checkRoute cell.c cell.n r);
-              in
-              if k == "occurrence" then [ (refKey r) ] else map (x: x.key) (declared r.from.class r.from.node)
-            ) (bucketOf cell.c cell.n)
-          )
-          (genericClosure {
-            startSet = [
-              {
-                key = toJSON [
-                  c
-                  n
-                ];
-                inherit c n;
-              }
-            ];
-            operator =
-              cell:
-              concatMap (
-                r:
-                if selKind (checkRoute cell.c cell.n r) == "cell" then
-                  [
-                    {
-                      key = toJSON [
-                        r.from.class
-                        r.from.node
-                      ];
-                      c = r.from.class;
-                      n = r.from.node;
-                    }
-                  ]
-                else
-                  [ ]
-              ) (bucketOf cell.c cell.n);
-          });
+        concatMap (
+          ck:
+          let
+            j = builtins.fromJSON ck;
+            cc = elemAt j 0;
+            nn = elemAt j 1;
+          in
+          concatMap (
+            r:
+            if selKind (checkRoute cc nn r) == "occurrence" then
+              [ (refKey r) ]
+            else
+              map (x: x.key) (declared r.from.class r.from.node)
+          ) (bucketOf cc nn)
+        ) ([ (cellKey c n) ] ++ graph.reachableVia cellsWhole (cellKey c n));
       leftover =
         c: n:
         let
@@ -898,8 +948,25 @@ let
           ]) (if hasCycle t.c t.n then throw "cycle" else received t.c t.n)) true
         )).success
       ) targets;
+      # Every state any bucket reaches, and the cyclic ones (gen-graph `cycles` over the closed set).
+      globalRoot = toJSON [ "all" ];
+      succAll = key: if key == globalRoot then allRoutes else succK key;
+      allCyclic = filter (k: k != globalRoot) (
+        graph.cycles {
+          nodes = [ globalRoot ] ++ graph.reachableVia succAll globalRoot;
+          edges = key: keysOf (succAll key);
+        }
+      );
       diagnostics = {
-        cycles = map (x: "${rName x.r} into ${at x.c x.n}") (filter selfReachable allRoutes);
+        cycles = uniqueOrdered (
+          map (
+            k:
+            let
+              x = stateOf k;
+            in
+            "${rName x.r} into ${at x.c x.n}"
+          ) allCyclic
+        );
         affected = map (t: at t.c t.n) (filter (t: hasCycle t.c t.n) targets);
         refusing = map (t: at t.c t.n) refusing;
         unresolved = unresolvedChecked;

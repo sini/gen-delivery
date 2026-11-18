@@ -33,6 +33,12 @@
     gen-prelude.url = "github:sini/gen-prelude";
     gen-scope.url = "github:sini/gen-scope";
     gen-scope.inputs.gen-algebra.follows = "gen-algebra";
+    # gen-graph: `forward`'s route-graph reachability and cyclic set are its algorithms (ADR-0009).
+    # gen-scope reaches it too, so it follows this one: the standalone entry holds one instance. Its
+    # only input is gen-prelude, so no cycle forms (ADR-0037).
+    gen-graph.url = "github:sini/gen-graph";
+    gen-graph.inputs.gen-prelude.follows = "gen-prelude";
+    gen-scope.inputs.gen-graph.follows = "gen-graph";
   };
 
   outputs = _: {
