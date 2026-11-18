@@ -226,6 +226,49 @@ let
       extraTerminals = xT;
     };
 
+  # A W1 adapter embeds the cell as realized there: faille's x cell receives damask's A at
+  # `spools.pewter`, and the whole cell goes to pewter at its root, so A lands at spools.pewter.
+  w1Placement = run {
+    cells = {
+      pewter.c = [
+        [
+          "own"
+          (own "pewter")
+        ]
+      ];
+      faille.x = [ ];
+      damask.x = [
+        [
+          "oa"
+          (t "A")
+        ]
+      ];
+    };
+    routes = {
+      x.faille = [
+        (route {
+          name = "in";
+          order = [ 0 ];
+          from = x "damask";
+          path = [
+            "spools"
+            "pewter"
+          ];
+        })
+      ];
+      c.pewter = [
+        (route {
+          name = "w";
+          order = [ 0 ];
+          from = x "faille";
+          select = "cell";
+          path = [ ];
+        })
+      ];
+    };
+    extraTerminals = xT;
+  };
+
   # ── G4 / G5: cycles, legal two-way exchange, taint ──
   # gimp ⇄ lisle, both W1, both with a terminal: a genuine cycle. pewter receives W1 from lisle (one
   # hop), damask W1 from pewter (two hops); faille relays gimp's declared occurrence from lisle (an
@@ -1184,6 +1227,13 @@ in
     test-order-received-before-declared-through-w1 = {
       expr = thread (relayW1 "cell") "pewter";
       expected = "B\nA\nR";
+    };
+
+    # RED (the received placement dropped at the W1 hop): A lands at the receiver's root, which
+    # declares no `thread`, and pewter's read throws.
+    test-w1-carries-the-received-placement-below-its-own = {
+      expr = thread w1Placement "pewter";
+      expected = "A\nR";
     };
 
     # ── G14: W1 vs W2 ──

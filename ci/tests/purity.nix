@@ -126,13 +126,10 @@ let
   # for nixpkgs. `algebra` is one of the two substrates gen-delivery takes as injected values, and it
   # is what its source names in place of a nixpkgs call.
   #
-  # ★ THE CEILING, because this library's scanned subject is ONE file. In a multi-file library the
-  # expected list is a PROPER SUBSET of the manifest and that is what gives it teeth — a read
-  # returning one fixed text for every file lands outside the list either way. Here the subject is
-  # `lib/default.nix` alone, so no proper subset exists and the cell bounds a narrower thing: a read
-  # that returned empty, or any constant NOT naming the substrate, reds it; a constant that happens
-  # to name the substrate passes. That residue is named rather than removed, and it closes if this
-  # library ever grows a second module.
+  # ★ THE CEILING CLOSED. In a multi-file library the expected list is a PROPER SUBSET of the
+  # manifest and that is what gives it teeth: a read returning one fixed text for every file lands
+  # outside the list either way. With `lib/forward.nix` beside `lib/default.nix` (which names the
+  # substrate where `forward.nix` does not), the list below is that proper subset.
   liveToken = "algebra";
   liveReads = map (src: src.name) (lib.filter (src: genPrelude.hasInfix liveToken src.code) sources);
 in
@@ -154,7 +151,10 @@ in
     # members: this suite's Scope is `lib/`, and the manifest states that rather than widening it.
     test-scan-subject-is-the-library-tree = {
       expr = map (s: s.name) sources;
-      expected = [ "lib/default.nix" ];
+      expected = [
+        "lib/default.nix"
+        "lib/forward.nix"
+      ];
     };
 
     # And that the label carries its file's text. The manifest above pins membership and is silent on

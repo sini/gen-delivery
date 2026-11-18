@@ -1072,12 +1072,12 @@ let
           classes = builtins.seq _collisionCheck (
             builtins.mapAttrs (_: d: map (r: r.entry.${d.a}) d.elements) delivered
           );
-          elementIds = builtins.seq _collisionCheck (
-            builtins.mapAttrs (_: d: map (r: r.eid) d.elements) delivered
-          );
-          occurrenceIds = builtins.seq _collisionCheck (
-            builtins.mapAttrs (_: d: map (r: r.oid) d.elements) delivered
-          );
+          # The two identity projections share one attribute, so a read of neither (`realize`'s)
+          # allocates no thunk for the second.
+          ids = builtins.seq _collisionCheck {
+            elementIds = builtins.mapAttrs (_: d: map (r: r.eid) d.elements) delivered;
+            occurrenceIds = builtins.mapAttrs (_: d: map (r: r.oid) d.elements) delivered;
+          };
         };
       # A node's classes on the shared path: each list's length from the shared count, its elements
       # from O, so a list's WHNF (and so the realization predicate, `!= [ ]`) reads no order. The two
@@ -1109,21 +1109,28 @@ let
           builtins.seq _collisionCheck (
             builtins.mapAttrs (dc: as: sized nodeName o dc counted.${builtins.head as}) groups
           );
+      # Per node, shared by its entry and by `occurrenceIds`.
+      sharedOf = builtins.mapAttrs sharedReach nodes;
+      ordersOf = builtins.mapAttrs (nodeName: inst: orderOf nodeName inst sharedOf.${nodeName}) nodes;
     in
-    builtins.mapAttrs (
-      nodeName: inst:
-      let
-        shared = sharedReach nodeName inst;
-        o = orderOf nodeName inst shared;
-      in
-      {
+    {
+      nodes = builtins.mapAttrs (nodeName: inst: {
         bindings = {
           node = inst;
         };
-        classes = if shared == null then o.classes else sharedClassesOf nodeName shared.counts o;
-        inherit (o) elementIds occurrenceIds;
-      }
-    ) nodes;
+        classes =
+          if sharedOf.${nodeName} == null then
+            ordersOf.${nodeName}.classes
+          else
+            sharedClassesOf nodeName sharedOf.${nodeName}.counts ordersOf.${nodeName};
+        elementIds = ordersOf.${nodeName}.ids.elementIds;
+      }) nodes;
+      # `{ <node> = { <delivery class> = [ <instance id> ]; }; }`: each element's CONTRIBUTING
+      # INSTANCE, positional beside `elementIds` (den-hoag-6md1q). Inline content belongs to its host,
+      # so an anonymous declaration's or an applied body's `<iid>/includes/<i>` is never one. Held at
+      # the projection's top level, so a node entry allocates nothing for it.
+      occurrenceIds = builtins.mapAttrs (nodeName: _: ordersOf.${nodeName}.ids.occurrenceIds) nodes;
+    };
 
   # `project` — the flat aspect registry plus the per-node build projection. Both keys were
   # published by the dissolving library's compose result; they are this surface's own now.
@@ -1282,8 +1289,9 @@ let
           aspects = registry;
 
           # The per-node build projection — a node-keyed reshape of the flat registry, driven by each
-          # node's `aspects` membership. This is what the terminal builds from.
-          nodes = projectNodes declaration deliveryClasses instances nodes values;
+          # node's `aspects` membership. This is what the terminal builds from. Beside it, each
+          # element's contributing instance (`occurrenceIds`), the attribution `forward` reads.
+          inherit (projectNodes declaration deliveryClasses instances nodes values) nodes occurrenceIds;
         }
       )
     );

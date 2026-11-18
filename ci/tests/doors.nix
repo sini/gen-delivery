@@ -7,7 +7,8 @@
 #   · `project { selectNodes ?; deliveryClasses ?; instances ?; } cnf values` — `cnf` is refused on
 #     every input when absent, so it is an operand; `selectNodes` is omittable (its absence refuses
 #     only where the node set is read), so it is an option;
-#   · `realize { bindings ?; refinements ?; layerOrder ?; extraModules ?; } terminals projected`.
+#   · `realize { bindings ?; refinements ?; layerOrder ?; extraModules ?; } terminals projected`;
+#   · `forward { routes ?; unresolved ?; } terminals projected` (den-hoag-6md1q).
 # There is no record step, so no row here carries R5's admitted-extra case or `optionsStep`.
 #
 # WHICH refusal fired is a claim about the message and `tryEval` yields only `success`; the byte
@@ -71,6 +72,25 @@ let
       observe = r: builtins.attrNames r.c.n.bindings;
       opt.bindings.global = 1;
     };
+    forward = {
+      optional = [
+        "routes"
+        "unresolved"
+      ];
+      apply = f: f terminals projected;
+      # An optional unresolved route is reported `unrouted`; with none, nothing is.
+      observe = r: r.diagnostics.unrouted;
+      opt.unresolved = [
+        {
+          name = "u";
+          producer = "p";
+          site = "s";
+          status = "N";
+          required = false;
+          reason = "r";
+        }
+      ];
+    };
   };
 
   # A field name no door declares, generated per evaluation from the door names themselves, so it is
@@ -129,6 +149,7 @@ in
           }
         );
         realize = firesAtApplication (genDelivery.realize { inherit projected terminals; });
+        forward = firesAtApplication (genDelivery.forward { inherit projected terminals; });
       };
       expected = perOptions (_: _: true);
     };

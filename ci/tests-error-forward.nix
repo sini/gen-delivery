@@ -303,14 +303,12 @@ in
         let
           p = fx.cellsToProjected base;
           bare = p // {
-            nodes = p.nodes // {
-              damask = builtins.removeAttrs p.nodes.damask [ "occurrenceIds" ];
-            };
+            occurrenceIds = builtins.removeAttrs p.occurrenceIds [ "damask" ];
           };
           f = genDelivery.forward { routes.c.pewter = [ r1 ]; } (fx.terminals // xT) bare;
         in
         (genDelivery.realize { } (fx.terminals // xT) f.projected).c.pewter;
-      expectedError.msg = exactly "${pre}: source cell x.damask carries no `occurrenceIds.x`: occurrences are `project`'s instance attribution, and a projection without it names none";
+      expectedError.msg = exactly "${pre}: source cell x.damask: the projection carries no `occurrenceIds.damask.x`: occurrences are `project`'s instance attribution, and a projection without it names none";
     };
     # G15 / C2: forwarded content left in a class with no terminal refuses through realize's own
     # content check, unchanged.

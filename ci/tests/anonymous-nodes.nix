@@ -192,7 +192,7 @@ let
   occurrenceCells =
     let
       ids = idsOf equivP "a";
-      oids = equivP.nodes.a.occurrenceIds.T;
+      oids = equivP.occurrenceIds.a.T;
       idx = builtins.head (
         builtins.filter (i: builtins.elemAt ids i == applied "a") (
           builtins.genList (i: i) (builtins.length ids)

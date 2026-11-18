@@ -231,6 +231,7 @@ let
         else
           r;
 
+      occIdsOf = n: c: ((projected.occurrenceIds or { }).${n} or { }).${c} or null;
       selKind = r: if isAttrs r.from.select then "occurrence" else r.from.select;
       occKey =
         l:
@@ -251,10 +252,10 @@ let
         let
           mods = nc.classes.${c};
           ids =
-            if !(nc ? occurrenceIds) || !(nc.occurrenceIds ? ${c}) then
-              throw "${pre}: source cell ${at c n} carries no `occurrenceIds.${c}`: occurrences are `project`'s instance attribution, and a projection without it names none"
+            if occIdsOf n c == null then
+              throw "${pre}: source cell ${at c n}: the projection carries no `occurrenceIds.${n}.${c}`: occurrences are `project`'s instance attribution, and a projection without it names none"
             else
-              nc.occurrenceIds.${c};
+              projected.occurrenceIds.${n}.${c};
           checkedIds =
             if !(isList ids) || length ids != length mods || !(all isString ids) then
               throw "${pre}: source cell ${at c n}: occurrenceIds.${c} must be one instance id (a string) per module of classes.${c}"
@@ -522,24 +523,36 @@ let
       # ── CARRIAGE (an acyclic closure only: an affected target refuses before it gets here) ──
       receivedMemo = mapAttrs (c: per: mapAttrs (n: _: receivedAt c n) per) routes;
       received = c: n: (receivedMemo.${c} or { }).${n} or [ ];
-      # The selected set of one route at its source cell, in the cell's order.
+      # The selected set of one route at its source cell, in the cell's order: each occurrence with
+      # the placement `sub` it already carries in that cell. A W1 adapter embeds the cell AS IT IS
+      # REALIZED THERE, so a received occurrence keeps its arrival path below the route's own; a
+      # declared occurrence and an occurrence relay are placed afresh (placement is destination
+      # metadata, never identity).
       selected =
         r:
         let
           fc = r.from.class;
           fn = r.from.node;
           k = selKind r;
+          fresh = map (occ: {
+            inherit occ;
+            sub = [ ];
+          });
         in
         if k == "declared" then
-          declared fc fn
+          fresh (declared fc fn)
         else if k == "cell" then
-          map (d: d.occ) (received fc fn) ++ declared fc fn
+          map (d: {
+            inherit (d) occ;
+            sub = d.chunks;
+          }) (received fc fn)
+          ++ fresh (declared fc fn)
         else
           let
             key = refKey r;
           in
           if declaresKey fc fn key then
-            [ ((declaredKeys.${fn}).${fc}).${key} ]
+            fresh [ ((declaredKeys.${fn}).${fc}).${key} ]
           else
             let
               got = receivedK fc fn key;
@@ -547,23 +560,31 @@ let
             if got == null then
               throw "${pre}: route ${rName r}: selects occurrence ${key}, which source cell ${at fc fn} neither declares nor receives"
             else
-              [ got ];
+              fresh [ got ];
+      # An arrival's placement is a list of CHUNKS, one per hop from the target down: the route's own
+      # resolved path, then what the occurrence carried in the embedded cell. An empty path adds no
+      # structure (content at a cell's root lands at the point the cell is embedded), so it is no
+      # chunk.
       arrivals =
         c: n: rs:
         concatMap (
           r:
-          map (occ: {
-            inherit occ r;
-            path = pathOf c n r occ;
+          map (x: {
+            inherit (x) occ;
+            inherit r;
+            chunks = filter (p: p != [ ]) ([ (pathOf c n r x.occ) ] ++ x.sub);
           }) (selected r)
         ) rs;
+      showPath = chunks: concatStringsSep "." (builtins.concatLists chunks);
       # Occurrence-once (T2) after placement consistency (A11): one D at one target at two resolved
-      # paths refuses by name; otherwise the first arrival in the declared order stands.
+      # placements refuses by name; otherwise the first arrival in the declared order stands.
       settle =
         c: n: as:
         let
           byD = groupBy (a: a.occ.key) as;
-          conflict = filter (k: length (uniqueOrdered (map (a: toJSON a.path) byD.${k})) > 1) (attrNames byD);
+          conflict = filter (k: length (uniqueOrdered (map (a: toJSON a.chunks) byD.${k})) > 1) (
+            attrNames byD
+          );
           keys = uniqueOrdered (map (a: a.occ.key) as);
         in
         if conflict != [ ] then
@@ -572,10 +593,10 @@ let
             as' = byD.${k};
           in
           throw "${pre}: occurrence ${k} arrives at target ${at c n} at ${
-            toString (length (uniqueOrdered (map (a: toJSON a.path) as')))
-          } paths (${
-            concatStringsSep ", " (uniqueOrdered (map (a: concatStringsSep "." a.path) as'))
-          }; routes ${concatStringsSep ", " (map (a: rName a.r) as')})"
+            toString (length (uniqueOrdered (map (a: toJSON a.chunks) as')))
+          } paths (${concatStringsSep ", " (uniqueOrdered (map (a: showPath a.chunks) as'))}; routes ${
+            concatStringsSep ", " (map (a: rName a.r) as')
+          })"
         else
           map (k: head byD.${k}) keys;
       receivedAt = c: n: settle c n (arrivals c n (assembled c n));
@@ -588,23 +609,40 @@ let
         in
         if as == [ ] then null else (head (settle c n as)).occ;
 
+      # ── EMISSION: arm (a) at every hop ──
+      # At one level, in the delivered order: an occurrence whose placement ends here contributes its
+      # group verbatim and contiguous; the occurrences continuing below one path share ONE
+      # function-form module at that path, at the position of the first of them.
+      level =
+        ds:
+        let
+          tag = d: if d.chunks == [ ] then "o" + d.occ.key else "p" + toJSON (head d.chunks);
+          tags = uniqueOrdered (map tag ds);
+          byT = groupBy tag ds;
+        in
+        concatMap (
+          tg:
+          let
+            its = byT.${tg};
+            d0 = head its;
+          in
+          if d0.chunks == [ ] then
+            d0.occ.group
+          else
+            [
+              (setAttrByPath (head d0.chunks) (_: {
+                imports = level (map (d: d // { chunks = builtins.tail d.chunks; }) its);
+              }))
+            ]
+        ) tags;
+
       # ── THE TARGET'S WRAPPER BODY ──
       forwardedModules =
         c: n:
         if hasCycle c n then
           throw "${pre}: target ${at c n} is affected by a forwarding cycle: ${concatStringsSep "; " (cyclicIn c n)} lie on a cycle, and the target receives what they carry"
         else
-          let
-            ds = received c n;
-            pks = uniqueOrdered (map (d: toJSON d.path) ds);
-            byP = groupBy (d: toJSON d.path) ds;
-          in
-          map (
-            pk:
-            setAttrByPath (head byP.${pk}).path (_: {
-              imports = concatMap (d: d.occ.group) byP.${pk};
-            })
-          ) pks;
+          level (received c n);
       wrapper = c: n: _: { imports = forwardedModules c n; };
 
       # ── C2: CONSUMED CONTENT OF A CELL WITH NO TERMINAL ──
@@ -699,7 +737,7 @@ let
         let
           mods = nc.classes.${c};
           u = consumed c n;
-          ids = nc.occurrenceIds.${c} or null;
+          ids = occIdsOf n c;
           keep =
             i:
             !(
@@ -736,7 +774,8 @@ let
           };
 
       # ── THE TRANSFORMED PROJECTION ──
-      nodes' = mapAttrs (
+      # Per node: its entry, and its `occurrenceIds` row (the projection's top-level field).
+      perNode = mapAttrs (
         n: nc:
         let
           targetClasses = filter (c: isAttrs routes.${c} && routes.${c} ? ${n}) (attrNames routes);
@@ -751,7 +790,7 @@ let
                   {
                     classes = own.${c};
                     elementIds = (nc.elementIds or { }).${c} or null;
-                    occurrenceIds = (nc.occurrenceIds or { }).${c} or null;
+                    occurrenceIds = occIdsOf n c;
                   }
                 else
                   {
@@ -795,15 +834,23 @@ let
             );
         in
         if targetClasses == [ ] && !(any (c: !(terminals ? ${c})) (attrNames own)) then
-          nc
-        else
-          nc
-          // {
-            classes = mapAttrs (c: _: cells.${c}.classes) cells;
+          {
+            entry = nc;
+            occ = (projected.occurrenceIds or { }).${n} or null;
           }
-          // (if nc ? elementIds then { elementIds = field "elementIds"; } else { })
-          // (if nc ? occurrenceIds then { occurrenceIds = field "occurrenceIds"; } else { })
+        else
+          {
+            entry =
+              nc
+              // {
+                classes = mapAttrs (c: _: cells.${c}.classes) cells;
+              }
+              // (if nc ? elementIds then { elementIds = field "elementIds"; } else { });
+            occ = field "occurrenceIds";
+          }
       ) nodes;
+      nodes' = mapAttrs (n: _: perNode.${n}.entry) nodes;
+      occurrenceIds' = mapAttrs (n: _: perNode.${n}.occ) (projected.occurrenceIds or { });
 
       # ── DIAGNOSTICS (data) AND THE CHECK (a separate value) ──
       unresolvedChecked =
@@ -847,7 +894,7 @@ let
         !(tryEval (
           builtins.deepSeq (map (d: [
             d.occ.key
-            d.path
+            d.chunks
           ]) (if hasCycle t.c t.n then throw "cycle" else received t.c t.n)) true
         )).success
       ) targets;
@@ -886,9 +933,12 @@ let
           throw "${pre}: check: ${toString (length failing)} route(s) fail: ${concatStringsSep "; " failing}";
     in
     builtins.seq _routesCheck {
-      projected = projected // {
-        nodes = nodes';
-      };
+      projected =
+        projected
+        // {
+          nodes = nodes';
+        }
+        // (if projected ? occurrenceIds then { occurrenceIds = occurrenceIds'; } else { });
       inherit diagnostics check;
     };
 in

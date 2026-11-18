@@ -15,9 +15,9 @@ let
         shade = "${n}-shade";
       };
       classes = builtins.mapAttrs (_: map (p: builtins.elemAt p 1)) per;
-      occurrenceIds = builtins.mapAttrs (_: map builtins.head) per;
       elementIds = builtins.mapAttrs (_: map builtins.head) per;
     }) cells;
+    occurrenceIds = builtins.mapAttrs (_: builtins.mapAttrs (_: map builtins.head)) cells;
   };
   recv = {
     options.spools = mkOption {
