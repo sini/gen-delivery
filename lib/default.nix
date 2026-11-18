@@ -1002,15 +1002,20 @@ let
             staticAt.${builtins.head ids}
           else
             staticFacts (setOf (builtins.concatMap (v: reachOf.${v}) ids));
-      # O's half of a node: its element list over M's projection and the two positional projections
-      # of it. `shared` is the node's static facts, or null on the per-node strata.
+      # O's half of a node: its element list over M's projection and the positional projections of it
+      # (classes; element and occurrence ids). It reads the node's static facts in place
+      # (`sharedOf.<node>`, null on the per-node strata): a select bound as an argument would cost each
+      # node a thunk on the fleet read (tests-process `fleet-per-host`).
       orderOf =
-        nodeName: inst: shared:
+        nodeName: inst:
         let
           # M's projection, then O's element list over it (declared order: shortlex over declared
           # positions).
-          inQuery = if shared == null then reachedByOf.${nodeName} else shared.S;
-          elements = ordered nodeName inst (if shared == null then tableFor inQuery else shared.table);
+          # The node's static facts, or null on the per-node strata (`sharedOf`, read in place).
+          inQuery = if sharedOf.${nodeName} == null then reachedByOf.${nodeName} else sharedOf.${nodeName}.S;
+          elements = ordered nodeName inst (
+            if sharedOf.${nodeName} == null then tableFor inQuery else sharedOf.${nodeName}.table
+          );
           inOrder = builtins.listToAttrs (
             map (i: {
               name = i.id;
@@ -1083,17 +1088,17 @@ let
       # from O, so a list's WHNF (and so the realization predicate, `!= [ ]`) reads no order. The two
       # agree by the length door, read on an element.
       sized =
-        nodeName: o: dc: n:
+        nodeName: dc: n:
         let
-          xs = o.classes.${dc};
+          xs = ordersOf.${nodeName}.classes.${dc};
           checked = if builtins.length xs == n then xs else throw (projectionParityRefusal nodeName dc false);
         in
         builtins.genList (i: builtins.elemAt checked i) n;
       sharedClassesOf =
-        nodeName: counted: o:
+        nodeName: counted:
         # With no entry each authored class is its own delivery class, so no two collide.
         if !(deliveryClasses ? ${nodeName}) then
-          builtins.mapAttrs (sized nodeName o) counted
+          builtins.mapAttrs (sized nodeName) counted
         else
           let
             entryMap = deliveryClasses.${nodeName};
@@ -1107,11 +1112,11 @@ let
             ) null (builtins.attrNames groups);
           in
           builtins.seq _collisionCheck (
-            builtins.mapAttrs (dc: as: sized nodeName o dc counted.${builtins.head as}) groups
+            builtins.mapAttrs (dc: as: sized nodeName dc counted.${builtins.head as}) groups
           );
       # Per node, shared by its entry and by `occurrenceIds`.
       sharedOf = builtins.mapAttrs sharedReach nodes;
-      ordersOf = builtins.mapAttrs (nodeName: inst: orderOf nodeName inst sharedOf.${nodeName}) nodes;
+      ordersOf = builtins.mapAttrs orderOf nodes;
     in
     {
       nodes = builtins.mapAttrs (nodeName: inst: {
@@ -1122,7 +1127,7 @@ let
           if sharedOf.${nodeName} == null then
             ordersOf.${nodeName}.classes
           else
-            sharedClassesOf nodeName sharedOf.${nodeName}.counts ordersOf.${nodeName};
+            sharedClassesOf nodeName sharedOf.${nodeName}.counts;
         elementIds = ordersOf.${nodeName}.ids.elementIds;
       }) nodes;
       # `{ <node> = { <delivery class> = [ <instance id> ]; }; }`: each element's CONTRIBUTING
