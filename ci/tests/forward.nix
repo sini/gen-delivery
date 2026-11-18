@@ -1477,6 +1477,74 @@ in
       }) "pewter";
       expected = "B\nA\nR";
     };
+    # A multi-int declaration order is compared lexicographically: the first differing position
+    # decides, and a proper prefix sorts first. A first reads "B\nA\nR", B first "A\nB\nR". Each arm
+    # lists the route that must come SECOND first, so a comparator that cannot tell the two apart
+    # (stable sort) reads the opposite. RED: comparing the first int only flips every arm; a
+    # reversed length rule (a prefix sorts last) flips `length` and `length-swapped`.
+    test-order-multi-int-declaration-order-is-lexicographic = {
+      expr =
+        builtins.mapAttrs
+          (
+            _: a:
+            thread (twoProducers {
+              inherit (a) orderA orderB;
+              listAFirst = a.aFirstInList;
+            }) "pewter"
+          )
+          {
+            # [ 0 0 5 ] < [ 0 1 ] at position 1, the longer one first: B first.
+            first-difference = {
+              orderA = [
+                0
+                1
+              ];
+              orderB = [
+                0
+                0
+                5
+              ];
+              aFirstInList = true;
+            };
+            # [ 0 ] is a proper prefix of [ 0 0 ]: B first.
+            length = {
+              orderA = [
+                0
+                0
+              ];
+              orderB = [ 0 ];
+              aFirstInList = true;
+            };
+            # The same pair swapped: A, the prefix, first.
+            length-swapped = {
+              orderA = [ 0 ];
+              orderB = [
+                0
+                0
+              ];
+              aFirstInList = false;
+            };
+            # [ 0 1 9 ] < [ 0 2 ] at position 1, the longer one first: B first.
+            later-position = {
+              orderA = [
+                0
+                2
+              ];
+              orderB = [
+                0
+                1
+                9
+              ];
+              aFirstInList = true;
+            };
+          };
+      expected = {
+        first-difference = "A\nB\nR";
+        length = "A\nB\nR";
+        length-swapped = "B\nA\nR";
+        later-position = "A\nB\nR";
+      };
+    };
     # Received-then-declared through a W1 cell: damask's A (received at faille) before faille's B.
     test-order-received-before-declared-through-w1 = {
       expr = thread (relayW1 "cell") "pewter";
