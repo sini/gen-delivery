@@ -1811,15 +1811,22 @@ in
         ];
       };
     };
-    # RED: a mutant admitting a function segment delivers.
+    # Each segment is one an admitting mutant would RESOLVE, so admission delivers rather than
+    # failing on a malformed segment: the default names an absent binding, the conditional has both
+    # branches. RED: a mutant admitting a function, a default, a conditional or a foreign attrset
+    # segment delivers.
     test-g13-function-attrset-conditional-and-default-segments-refuse = {
       expr = map (seg: ok (grammar seg).realized.c.pewter) [
         (_: "pewter")
         {
-          captured = "node";
+          captured = "absent";
           default = "pewter";
         }
-        { "if" = true; }
+        {
+          "if" = true;
+          "then" = "pewter";
+          "else" = "welt";
+        }
         { other = "pewter"; }
         3
       ];
