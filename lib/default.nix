@@ -1041,6 +1041,8 @@ let
                 inherit entry;
                 classes = classesOf entry;
                 eid = item.cid or item.id;
+                # The contributing instance: inline content belongs to its host's occurrence.
+                oid = item.host or item.id;
               }
             ) elements
           );
@@ -1072,6 +1074,9 @@ let
           );
           elementIds = builtins.seq _collisionCheck (
             builtins.mapAttrs (_: d: map (r: r.eid) d.elements) delivered
+          );
+          occurrenceIds = builtins.seq _collisionCheck (
+            builtins.mapAttrs (_: d: map (r: r.oid) d.elements) delivered
           );
         };
       # A node's classes on the shared path: each list's length from the shared count, its elements
@@ -1116,7 +1121,7 @@ let
           node = inst;
         };
         classes = if shared == null then o.classes else sharedClassesOf nodeName shared.counts o;
-        inherit (o) elementIds;
+        inherit (o) elementIds occurrenceIds;
       }
     ) nodes;
 
@@ -1506,9 +1511,11 @@ let
     builtins.seq _layerOrderCheck (
       builtins.seq _extraModulesCheck (builtins.seq _contentCheck realized)
     );
+  # `forward` — the first forwarding slice, `project → forward → realize` (lib/forward.nix).
+  inherit (import ./forward.nix { inherit prelude; }) forward;
 in
 {
-  inherit project realize;
+  inherit project forward realize;
 
   # The layer declaration, published. An order that ships as a default is only a declaration if a
   # consumer can read it; one that can only be overridden is an implicit order with a hatch.

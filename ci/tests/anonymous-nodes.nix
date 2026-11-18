@@ -187,6 +187,34 @@ let
     name = "t";
     T.marks = [ m ];
   };
+  # `occurrenceIds` (den-hoag-6md1q): each element's contributing instance, positional beside
+  # `elementIds`. Inline content belongs to its host, so no `<iid>/includes/<i>` address is one.
+  occurrenceCells =
+    let
+      ids = idsOf equivP "a";
+      oids = equivP.nodes.a.occurrenceIds.T;
+      idx = builtins.head (
+        builtins.filter (i: builtins.elemAt ids i == applied "a") (
+          builtins.genList (i: i) (builtins.length ids)
+        )
+      );
+    in
+    {
+      parity = builtins.length ids == builtins.length oids;
+      hostsAreDeliveredElements = builtins.all (o: builtins.elem o ids) oids;
+      noPositionalAddress = builtins.all (o: !(hasInfix "/includes/" o)) oids;
+      appliedContentBelongsToItsInstance = builtins.elemAt oids idx == instanceOf "a";
+      occurrences = builtins.length (
+        builtins.attrNames (
+          builtins.listToAttrs (
+            map (o: {
+              name = o;
+              value = null;
+            }) oids
+          )
+        )
+      );
+    };
 in
 {
   # A3. The query reaches each anonymous declaration and the parity door certifies it: removing the
@@ -555,4 +583,18 @@ in
         };
       };
     };
+
+  # O1. Host a's elements w, its inline content (inl, inn, shared), z, e's instance and that
+  # instance's applied content have three contributing instances: w, z and the instance. RED (the
+  # element id taken as the occurrence): seven, and `<iid>/includes/0` among them.
+  flake.tests.anonymous-nodes.test-occurrence-ids-name-the-contributing-instance = {
+    expr = occurrenceCells;
+    expected = {
+      parity = true;
+      hostsAreDeliveredElements = true;
+      noPositionalAddress = true;
+      appliedContentBelongsToItsInstance = true;
+      occurrences = 3;
+    };
+  };
 }

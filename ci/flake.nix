@@ -137,6 +137,7 @@
       # `apps.tests-process`, not `testModules`.
       extraModules = [
         ./tests-error.nix
+        ./tests-error-forward.nix
         ./tests-process.nix
       ];
     };
