@@ -481,6 +481,7 @@ let
             stateOf
             kindOf
             keysOf
+            succ
             succK
             deliversK
             closureKeys
@@ -493,6 +494,7 @@ let
         stateOf
         kindOf
         keysOf
+        succ
         succK
         deliversK
         closureKeys
@@ -701,7 +703,7 @@ let
       # declared occurrence and an occurrence relay are placed afresh (placement is destination
       # metadata, never identity).
       selected =
-        r:
+        c: n: r:
         let
           fc = r.from.class;
           fn = r.from.node;
@@ -722,7 +724,7 @@ let
         else
           let
             key = refKey r;
-            got = (dkOf fc fn).${key} or (receivedDKAt fc fn key);
+            got = selMemo.${c}.${n}.${"${r.producer}\n${r.name}"};
           in
           if declaresKey fc fn key then
             fresh [ (declOcc fc fn key) ]
@@ -749,7 +751,7 @@ let
       };
       arrivals =
         c: n: rs:
-        concatMap (r: map (x: place c n r x.occ x.sub) (selected r)) rs;
+        concatMap (r: map (x: place c n r x.occ x.sub) (selected c n r)) rs;
       pathsOf = a: map (h: h.path) a.chunks;
       showPath = a: concatStringsSep "." (builtins.concatLists (pathsOf a));
       # Occurrence-once (T2) after placement consistency (A11): one D at one target at two resolved
@@ -793,7 +795,8 @@ let
               [ (place c n r (declOcc fc fn k) [ ]) ]
             else
               let
-                d = (dkOf fc fn).${k} or (receivedDKAt fc fn k);
+                # An occurrence hop selects `refKey r` = k: its route's own entry. A W1 hop carries any key.
+                d = if keepSub then receivedDK fc fn k else selMemo.${c}.${n}.${"${r.producer}\n${r.name}"};
               in
               if d == null then [ ] else [ (place c n r d.occ (if keepSub then d.chunks else [ ])) ];
         in
@@ -805,16 +808,31 @@ let
           [ ]
         else
           viaSource false;
-      # One entry per (cell, key) an occurrence route selects from the cell (C2's consumption table, the
-      # keys a relay reads there), so a relay of relays shares each arrival as the cell carriage does; a
-      # key no route selects from the cell is computed where it is read.
-      dkMemo = mapAttrs (
-        c: per: mapAttrs (n: _: mapAttrs (k: _: receivedDKAt c n k) (consumed c n).keys) per
+      # One entry per occurrence route, in its holding cell's bucket memo (`itemMemo`'s shape, keyed as
+      # `assembled` names a route): the arrival it selects at its source cell. A relay of relays then
+      # shares each arrival as the cell carriage does. It is read inline at each site, never through a
+      # wrapper, which would add a frame per hop to the walk; a W1 hop's key walk is not held here.
+      selMemo = mapAttrs (
+        c: per:
+        mapAttrs (
+          n: _:
+          listToAttrs (
+            concatMap (
+              x:
+              if selKind x.r == "occurrence" then
+                [
+                  {
+                    name = "${x.r.producer}\n${x.r.name}";
+                    value = receivedDK x.r.from.class x.r.from.node (refKey x.r);
+                  }
+                ]
+              else
+                [ ]
+            ) (itemsOf c n)
+          )
+        ) per
       ) routes;
-      # Read inline at each call site (`(dkOf c n).${k} or (receivedDKAt c n k)`), never through a wrapper:
-      # a wrapper adds one frame per hop to a key walk the memo does not hold (a W1 run inside a relay).
-      dkOf = c: n: (dkMemo.${c} or { }).${n} or { };
-      receivedDKAt =
+      receivedDK =
         c: n: k:
         let
           rs = filter (r: deliversK (item c n r) k) (assembled c n);
@@ -833,36 +851,29 @@ let
       # any refusal there sends the read to `received`, which raises it in its own order.
       # One attribute per closure state, named by its source cell: fewer names than states is two states
       # selecting from one cell. A name collision can only read a tree as shared, which falls back.
+      # The closure's states, decoded once per target and shared by the tree test and the fill.
+      statesMemo = mapAttrs (
+        c: per: mapAttrs (n: _: map stateOf (builtins.tail (closureKeys c n))) per
+      ) routes;
+      statesOf =
+        c: n: (statesMemo.${c} or { }).${n} or (map stateOf (builtins.tail (closureKeys c n)));
       treeShaped =
         c: n:
         let
-          fs = map (
-            k:
-            let
-              x = stateOf k;
-            in
-            {
-              name = "${x.r.from.class}\n${x.r.from.node}";
-              value = null;
-            }
-          ) (builtins.tail (closureKeys c n));
+          fs = map (x: {
+            name = "${x.r.from.class}\n${x.r.from.node}";
+            value = null;
+          }) (statesOf c n);
         in
         length (attrNames (listToAttrs fs)) == length fs
         # Only on a collision: states that are twins in one holding cell count once, so a twin merge (one
         # source cell selected alike by two routes of a bucket) reads as a tree.
         || (
           let
-            ks = builtins.tail (closureKeys c n);
-            fs = map (
-              k:
-              let
-                x = stateOf k;
-              in
-              {
-                name = "${x.c}\n${x.n}\n${twinSig x.r}\n${x.rk or ""}";
-                value = "${x.r.from.class}\n${x.r.from.node}";
-              }
-            ) ks;
+            fs = map (x: {
+              name = "${x.c}\n${x.n}\n${twinSig x.r}\n${x.rk or ""}";
+              value = "${x.r.from.class}\n${x.r.from.node}";
+            }) (statesOf c n);
             vs = builtins.attrValues (listToAttrs fs);
           in
           length (
@@ -998,7 +1009,7 @@ let
             up = if k == "cell" then itemsOfCell fc fn else [ ];
             own =
               if k == "occurrence" then
-                map (x: { inherit (x) occ; }) (selected r)
+                map (x: { inherit (x) occ; }) (selected c n r)
               else
                 map (occ: { inherit occ; }) (declared fc fn);
           in
@@ -1102,47 +1113,60 @@ let
       # entry per `foldl'` step, over the target's closure deepest first, so each entry finds its sources
       # already forced and the read costs constant stack in relay depth. A step forces only what the read
       # forces: a W1 state its source's cell entry (`cellStep`), a key-scoped state its source's arrival
-      # where `dkMemo` holds it (an arrival with no entry would be computed and dropped), a declared state
-      # nothing. A refusal is raised at the first refusing entry in this order, where the read raises it
+      # where `selMemo` holds it (an occurrence state; a W1 state's key walk has no entry, and computing it
+      # here would drop it), a declared state nothing. A refusal is raised at the first refusing entry in this order, where the read raises it
       # (gen-graph `preorder.nix`'s contract for a flattened walk: with two faults, the one reported can
       # differ from the recursive walk's); a read that succeeds forces exactly what it forced before.
       fill =
         cellStep: c: n:
         foldl' (
-          acc: k:
+          acc: x:
           let
-            x = stateOf k;
             fc = x.r.from.class;
             fn = x.r.from.node;
             kd = kindOf x;
-            key = x.rk or (refKey x.r);
           in
           if kd == "declared" then
             acc
-          else if x ? rk || kd == "occurrence" then
+          else if kd == "occurrence" then
             (
-              if declaresKey fc fn key || !(dkOf fc fn ? ${key}) then
+              if declaresKey fc fn (refKey x.r) then
                 acc
               else
-                builtins.seq (dkOf fc fn).${key} acc
+                builtins.seq selMemo.${x.c}.${x.n}.${"${x.r.producer}\n${x.r.name}"} acc
             )
+          else if x ? rk then
+            acc
           else
             builtins.seq (cellStep fc fn) acc
         ) true (fillOrder c n);
       # Sources first. In a tree-shaped closure each source cell is selected by one state (or twins in one
       # holding cell, discovered together), so every state's successors are discovered after it and the
       # closure's own order, reversed, is topological. Elsewhere a later-discovered state can select from a
-      # cell an earlier one reached first (a relay with shortcuts), so the order is gen-graph's Kahn arm,
-      # the driver `coneRank` warms with; an acyclic closure is the only one read here.
+      # cell an earlier one reached first (a relay with shortcuts); where it does, the order is gen-graph's
+      # Kahn arm, the driver `coneRank` warms with. Only an acyclic closure is read here.
       fillOrder =
         c: n:
-        if treeShaped c n then
-          reverse (builtins.tail (closureKeys c n))
+        let
+          xs = statesOf c n;
+          # Where the closure's own order already places every state before its successors (a merge
+          # ladder does), it is used reversed; the check reads each state's successors once.
+          pos = listToAttrs (
+            genList (i: {
+              name = (elemAt xs i).key;
+              value = i;
+            }) (length xs)
+          );
+          inOrder = all (i: all (y: pos.${y.key} > i) (succ (elemAt xs i))) (genList (i: i) (length xs));
+        in
+        if treeShaped c n || inOrder then
+          reverse xs
         else
-          (graph.topoOrderKahn { } {
-            nodes = builtins.tail (closureKeys c n);
-            edges = k: keysOf (succK k);
-          }).order;
+          map stateOf
+            (graph.topoOrderKahn { } {
+              nodes = builtins.tail (closureKeys c n);
+              edges = k: keysOf (succK k);
+            }).order;
       probed = c: n: builtins.seq (fill probeOk c n) (probeOk c n);
       receivedFilled = c: n: builtins.seq (fill received c n) (received c n);
       # Every state of the closure places at importsAt [ ]: every arrival's chunk list is empty, so settle's
