@@ -468,11 +468,26 @@ let
           closureKeys =
             c: n:
             (closureMemo.${c} or { }).${n} or ([ (rootKey c n) ] ++ graph.reachableVia succK (rootKey c n));
+          # Each closure state's successor keys, read once per target and shared by the cycle analysis
+          # and the fill's order (a state outside the closure falls back to the accessor).
+          edgeMemo = mapAttrs (
+            c: per:
+            mapAttrs (
+              n: _:
+              listToAttrs (
+                map (k: {
+                  name = k;
+                  value = keysOf (succK k);
+                }) (closureKeys c n)
+              )
+            ) per
+          ) routes;
+          edgesIn = c: n: k: ((edgeMemo.${c} or { }).${n} or { }).${k} or (keysOf (succK k));
           cyclicKeys =
             c: n:
             graph.cycles {
               nodes = closureKeys c n;
-              edges = key: keysOf (succK key);
+              edges = edgesIn c n;
             };
           hasCycle = c: n: cyclicKeys c n != [ ];
         in
@@ -481,10 +496,10 @@ let
             stateOf
             kindOf
             keysOf
-            succ
             succK
             deliversK
             closureKeys
+            edgesIn
             cyclicKeys
             hasCycle
             ;
@@ -494,10 +509,10 @@ let
         stateOf
         kindOf
         keysOf
-        succ
         succK
         deliversK
         closureKeys
+        edgesIn
         cyclicKeys
         hasCycle
         ;
@@ -1150,14 +1165,14 @@ let
         let
           xs = statesOf c n;
           # Where the closure's own order already places every state before its successors (a merge
-          # ladder does), it is used reversed; the check reads each state's successors once.
+          # ladder does), it is used reversed; the check reads the successors the cycle analysis read.
           pos = listToAttrs (
             genList (i: {
               name = (elemAt xs i).key;
               value = i;
             }) (length xs)
           );
-          inOrder = all (i: all (y: pos.${y.key} > i) (succ (elemAt xs i))) (genList (i: i) (length xs));
+          inOrder = all (i: all (y: pos.${y} > i) (edgesIn c n (elemAt xs i).key)) (genList (i: i) (length xs));
         in
         if treeShaped c n || inOrder then
           reverse xs
@@ -1165,7 +1180,7 @@ let
           map stateOf
             (graph.topoOrderKahn { } {
               nodes = builtins.tail (closureKeys c n);
-              edges = k: keysOf (succK k);
+              edges = edgesIn c n;
             }).order;
       probed = c: n: builtins.seq (fill probeOk c n) (probeOk c n);
       receivedFilled = c: n: builtins.seq (fill received c n) (received c n);
