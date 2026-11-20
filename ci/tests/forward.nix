@@ -180,6 +180,59 @@ let
             ra
           ];
     };
+  # Three producers, damask (A), faille (B) and gimp (C), each forwarding one occurrence into
+  # pewter. `orders.<P>` is P's declared order; `list` names the bucket's list order, e.g. "CAB".
+  # The route names run against the producer order (`zz`, `mm`, `aa`), so name order is not read.
+  threeProducers =
+    { orders, list }:
+    let
+      rs = {
+        A = route {
+          name = "zz";
+          order = orders.A;
+          from = s "damask";
+        };
+        B = route {
+          name = "mm";
+          order = orders.B;
+          from = s "faille";
+        };
+        C = route {
+          name = "aa";
+          order = orders.C;
+          from = s "gimp";
+        };
+      };
+    in
+    run {
+      cells = {
+        pewter.c = [
+          [
+            "own"
+            (own "pewter")
+          ]
+        ];
+        damask.s = [
+          [
+            "oa"
+            (t "A")
+          ]
+        ];
+        faille.s = [
+          [
+            "ob"
+            (t "B")
+          ]
+        ];
+        gimp.s = [
+          [
+            "oc"
+            (t "C")
+          ]
+        ];
+      };
+      routes.c.pewter = map (p: rs.${p}) (lib.stringToCharacters list);
+    };
   # A W1 relay: faille's cell receives damask's occurrence and declares its own; the whole cell goes
   # to pewter: received first, then declared.
   relayW1 =
@@ -1545,6 +1598,90 @@ in
         later-position = "A\nB\nR";
       };
     };
+    # Three producers: the delivered text depends on the declared orders only. Every one of the
+    # six order assignments (keyed by the delivered order: "BCA" gives B [0], C [1], A [2]) reads
+    # one value under all six list orders, and the six values are distinct. The multi-int arms
+    # order three routes lexicographically, each listed so a stable sort reads otherwise. den v1's
+    # direct three-producer forward delivers the same order in all six assignments (the d6zee
+    # parity scout's G1 rows: a MATCH). RED: an unsorted bucket (list order) flips five list
+    # orders per assignment and the multi-int arms; comparing the first int only flips both
+    # multi-int arms.
+    test-order-three-producers-declared-order-not-list-order =
+      let
+        perms = [
+          "ABC"
+          "ACB"
+          "BAC"
+          "BCA"
+          "CAB"
+          "CBA"
+        ];
+        rank = key: p: lib.lists.findFirstIndex (q: q == p) null (lib.stringToCharacters key);
+      in
+      {
+        expr = {
+          by-assignment = lib.genAttrs perms (
+            key:
+            lib.genAttrs perms (
+              list:
+              thread (threeProducers {
+                orders = lib.genAttrs [ "A" "B" "C" ] (p: [ (rank key p) ]);
+                inherit list;
+              }) "pewter"
+            )
+          );
+          multi-int = {
+            # C [ 0 ] is a prefix of B [ 0 0 5 ], which differs from A [ 0 1 ] at position 1:
+            # C, B, A.
+            prefix-and-first-difference = thread (threeProducers {
+              orders = {
+                A = [
+                  0
+                  1
+                ];
+                B = [
+                  0
+                  0
+                  5
+                ];
+                C = [ 0 ];
+              };
+              list = "ABC";
+            }) "pewter";
+            # B [ 0 9 9 ] < C [ 0 10 ] at position 1, both before A [ 1 ]: B, C, A.
+            later-position = thread (threeProducers {
+              orders = {
+                A = [ 1 ];
+                B = [
+                  0
+                  9
+                  9
+                ];
+                C = [
+                  0
+                  10
+                ];
+              };
+              list = "CBA";
+            }) "pewter";
+          };
+        };
+        expected = {
+          # The bytes read the delivered order reversed, then R.
+          by-assignment = lib.mapAttrs (_: v: lib.genAttrs perms (_: v)) {
+            ABC = "C\nB\nA\nR";
+            ACB = "B\nC\nA\nR";
+            BAC = "C\nA\nB\nR";
+            BCA = "A\nC\nB\nR";
+            CAB = "B\nA\nC\nR";
+            CBA = "A\nB\nC\nR";
+          };
+          multi-int = {
+            prefix-and-first-difference = "A\nB\nC\nR";
+            later-position = "A\nC\nB\nR";
+          };
+        };
+      };
     # Received-then-declared through a W1 cell: damask's A (received at faille) before faille's B.
     test-order-received-before-declared-through-w1 = {
       expr = thread (relayW1 "cell") "pewter";
