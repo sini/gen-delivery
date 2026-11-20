@@ -1100,8 +1100,10 @@ let
       # entry per `foldl'` step, over the target's closure deepest first, so each entry finds its sources
       # already forced and the read costs constant stack in relay depth. A step forces only what the read
       # forces: a W1 state its source's cell entry (`cellStep`), a key-scoped state its source's arrival
-      # where `dkMemo` holds it (under `tryEval`: a refusal there is raised by the read, in its own order;
-      # an arrival with no entry would be computed and dropped), a declared state nothing.
+      # where `dkMemo` holds it (an arrival with no entry would be computed and dropped), a declared state
+      # nothing. A refusal is raised at the first refusing entry in this order, where the read raises it
+      # (gen-graph `preorder.nix`'s contract for a flattened walk: with two faults, the one reported can
+      # differ from the recursive walk's); a read that succeeds forces exactly what it forced before.
       fill =
         cellStep: c: n:
         foldl' (
@@ -1120,7 +1122,7 @@ let
               if declaresKey fc fn key || !(((dkMemo.${fc} or { }).${fn} or { }) ? ${key}) then
                 acc
               else
-                builtins.seq (tryEval (receivedDK fc fn key)).success acc
+                builtins.seq (receivedDK fc fn key) acc
             )
           else
             builtins.seq (cellStep fc fn) acc
