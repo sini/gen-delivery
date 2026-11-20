@@ -183,9 +183,53 @@
           [ "$bb" -le "$bmax" ] \
             || die forward-width "a route costs more bytes as the bucket widens than bounded: $bb over k = 16..64, bound $bmax"
 
+          # den-hoag-92bpu: a W1 hop carries its source's received set by reference, so a target's read costs
+          # the same per hop however deep the relay (first slice section 2.10, "linear in relay depth").
+          # Re-materialised per hop it read quadratic (1874 / 2793 thunks per hop over 16..32 / 32..64 on Nix).
+          # Section 2.10 is amended for one class only: a W1 route whose placement reads `captured` (or a `ref`
+          # that may resolve there) owes d(d+1)/2 (occurrence, hop) placement resolutions, each able to refuse
+          # or regroup, so it is quadratic by the semantics (its module count only where the resolved values
+          # differ). Merge points and closures where two routes select from one cell keep the claim: their
+          # cost above linear is an owed defect, not a carve-out. This chain is outside that class.
+          # Thunks are bounded per hop by one flat ceiling on both segments; bytes over 32..64, per evaluator
+          # family, each bound measured on all three evaluators.
+          at depth 1 1; dt1=$thunks
+          at depth 16 16; dt16=$thunks
+          at depth 32 32; dt32=$thunks db32=$bytes
+          at depth 64 64; dt64=$thunks db64=$bytes
+          da=$(((dt32 - dt16) / 16)) dc=$(((dt64 - dt32) / 32)) dbb=$(((db64 - db32) / 32))
+          echo "forward-depth: $da / $dc thunks per hop over d = 16..32 / 32..64, $dbb bytes over 32..64 ($dt1 / $dt16 / $dt32 / $dt64 thunks)"
+          [ "$da" -gt 0 ] && [ "$dbb" -gt 0 ] || die forward-depth "could not measure: no cost per hop ($dt16 / $dt32 thunks, $db32 / $db64 bytes)"
+          [ "$da" -le 1300 ] && [ "$dc" -le 1300 ] \
+            || die forward-depth "a hop costs more thunks as the relay deepens than bounded: $da / $dc over d = 16..32 / 32..64"
+          case "$(nix-instantiate --version)" in
+            *Lix*) dbmax=100000 ;;
+            *Determinate*) dbmax=80000 ;;
+            *) dbmax=95000 ;;
+          esac
+          [ "$dbb" -le "$dbmax" ] \
+            || die forward-depth "a hop costs more bytes as the relay deepens than bounded: $dbb over d = 32..64, bound $dbmax"
+          # Growth: bytes per hop at d = 512..1024 stay within 8% of 32..64, so a carriage that copies its
+          # source's items into each cell (thunk-flat, bytes growing with the items carried) reds here
+          # though it passes the bounds above: measured 1.152 / 1.152 on Nix / Lix against 1.005 / 1.005
+          # for the reference carriage. Not read on Determinate: its block allocator moves this ratio more
+          # than the defect does (1.114 reference, 1.097 copying).
+          at depth 512 512; db512=$bytes
+          at depth 1024 1024; db1024=$bytes
+          dbg=$(((db1024 - db512) / 512))
+          echo "forward-depth-growth: $dbg bytes per hop over d = 512..1024, $dbb over 32..64"
+          [ "$dbg" -gt 0 ] || die forward-depth "could not measure: no bytes per hop over d = 512..1024 ($db512 / $db1024)"
+          case "$(nix-instantiate --version)" in
+            *Determinate*) ;;
+            *)
+              [ $((dbg * 100)) -le $((dbb * 108)) ] \
+                || die forward-depth "a hop's bytes grow with the relay's depth: $dbg over d = 512..1024 against $dbb over 32..64, more than 8%"
+              ;;
+          esac
+
           # 0/0 is a false pass: the runner must have executed every evaluation above.
-          [ "$ran" = "21" ] || die runner "expected 21 evaluations, ran $ran"
-          echo "tests-process: 6 cells, every exit read unpiped, every count read" > $out
+          [ "$ran" = "27" ] || die runner "expected 27 evaluations, ran $ran"
+          echo "tests-process: 7 cells, every exit read unpiped, every count read" > $out
         ''
         + ''
           cat "$out"

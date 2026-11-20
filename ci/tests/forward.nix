@@ -2183,6 +2183,83 @@ in
     };
 
     # ── the check, as a value ──
+    # den-hoag-92bpu: a route that carries nothing is never placed, so its placement is never read (here it
+    # aborts if read), on the shared carriage as before it.
+    test-relay-route-that-carries-nothing-is-never-placed = {
+      expr =
+        builtins.attrNames
+          (run {
+            cells = {
+              t0.c = [
+                [
+                  "own"
+                  (own "t0")
+                ]
+              ];
+              t1.c = [
+                [
+                  "own"
+                  (own "t1")
+                ]
+              ];
+              t2.c = [
+                [
+                  "own"
+                  (own "t2")
+                ]
+              ];
+              t3.c = [
+                [
+                  "own"
+                  (own "t3")
+                ]
+              ];
+              e.s = [ ];
+            };
+            routes.c = {
+              t1 = [
+                (route {
+                  name = "h0";
+                  order = [ 0 ];
+                  from = c "t0";
+                  select = "cell";
+                  path = [ ];
+                })
+              ];
+              t2 = [
+                (route {
+                  name = "h1";
+                  order = [ 0 ];
+                  from = c "t1";
+                  select = "cell";
+                  path = [ ];
+                })
+                (route {
+                  name = "ge";
+                  order = [ 1 ];
+                  from = s "e";
+                  path = [ (abort "forward test: a route that carries nothing was placed") ];
+                })
+              ];
+              t3 = [
+                (route {
+                  name = "h2";
+                  order = [ 0 ];
+                  from = c "t2";
+                  select = "cell";
+                  path = [ ];
+                })
+              ];
+            };
+            extraTerminals.s = _: null;
+          }).realized.c.t3;
+      expected = [
+        "t0"
+        "t1"
+        "t2"
+        "t3"
+      ];
+    };
     test-check-passes-on-a-clean-forward = {
       expr = oneOcc.check;
       expected = true;

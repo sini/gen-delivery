@@ -557,6 +557,276 @@ in
       expr = dropped.realized.c.t0;
       expectedError.msg = exactly "${pre}: route into c.t1: p1/g1 must carry `from = { class; node; select; }`";
     };
+    # den-hoag-92bpu: on a relay chain, the placement refusal a read raises is the one `received`'s settles raise
+    # first (the deepest carrying hop), and between routes into one target it follows the carried occurrence keys.
+    test-forward-relay-chain-placement-refuses-at-the-deepest-hop = {
+      expr =
+        (run {
+          cells = {
+            t0.c = [
+              [
+                "own"
+                (own "t0")
+              ]
+            ];
+            t1.c = [
+              [
+                "own"
+                (own "t1")
+              ]
+            ];
+            t2.c = [
+              [
+                "own"
+                (own "t2")
+              ]
+            ];
+            t3.c = [
+              [
+                "own"
+                (own "t3")
+              ]
+            ];
+            t4.c = [
+              [
+                "own"
+                (own "t4")
+              ]
+            ];
+            t5.c = [
+              [
+                "own"
+                (own "t5")
+              ]
+            ];
+          };
+          routes.c = {
+            t1 = [
+              (route {
+                name = "h0";
+                order = [ 0 ];
+                from = c "t0";
+                select = "cell";
+                path = [ "x" ];
+              })
+            ];
+            t2 = [
+              (route {
+                name = "h1";
+                order = [ 0 ];
+                from = c "t1";
+                select = "cell";
+                path = [ { scope = "nope"; } ];
+              })
+            ];
+            t3 = [
+              (route {
+                name = "h2";
+                order = [ 0 ];
+                from = c "t2";
+                select = "cell";
+                path = [ "x" ];
+              })
+            ];
+            t4 = [
+              (route {
+                name = "h3";
+                order = [ 0 ];
+                from = c "t3";
+                select = "cell";
+                path = [ { scope = "nope"; } ];
+              })
+            ];
+            t5 = [
+              (route {
+                name = "h4";
+                order = [ 0 ];
+                from = c "t4";
+                select = "cell";
+                path = [ "x" ];
+              })
+            ];
+          };
+        }).realized.c.t5;
+      expectedError.msg = exactly "${pre}: route t1/h1: placement segment { scope = \"nope\"; }: the scope bindings have no 'nope'";
+    };
+    test-forward-placement-refusal-between-routes-follows-the-carried-keys = {
+      expr =
+        (run {
+          cells = {
+            t0.c = [
+              [
+                "own"
+                (own "t0")
+              ]
+            ];
+            y1.s = [
+              [
+                "o1"
+                (t "Y1")
+              ]
+            ];
+            y2.s = [
+              [
+                "o2"
+                (t "Y2")
+              ]
+            ];
+          };
+          routes.c.t0 = [
+            (route {
+              name = "g1";
+              order = [ 0 ];
+              from = s "y2";
+              path = [ { scope = "nope1"; } ];
+            })
+            (route {
+              name = "g2";
+              order = [ 1 ];
+              from = s "y1";
+              path = [ { scope = "nope2"; } ];
+            })
+          ];
+          extraTerminals.s = _: null;
+        }).realized.c.t0;
+      expectedError.msg = exactly "${pre}: route y1/g2: placement segment { scope = \"nope2\"; }: the scope bindings have no 'nope2'";
+    };
+    test-forward-check-names-every-relay-target-a-placement-refuses = {
+      expr =
+        (run {
+          cells = {
+            t0.c = [
+              [
+                "own"
+                (own "t0")
+              ]
+            ];
+            t1.c = [
+              [
+                "own"
+                (own "t1")
+              ]
+            ];
+            t2.c = [
+              [
+                "own"
+                (own "t2")
+              ]
+            ];
+            t3.c = [
+              [
+                "own"
+                (own "t3")
+              ]
+            ];
+            t4.c = [
+              [
+                "own"
+                (own "t4")
+              ]
+            ];
+          };
+          routes.c = {
+            t1 = [
+              (route {
+                name = "h0";
+                order = [ 0 ];
+                from = c "t0";
+                select = "cell";
+                path = [ ];
+              })
+            ];
+            t2 = [
+              (route {
+                name = "h1";
+                order = [ 0 ];
+                from = c "t1";
+                select = "cell";
+                path = [ { scope = "nope"; } ];
+              })
+            ];
+            t3 = [
+              (route {
+                name = "h2";
+                order = [ 0 ];
+                from = c "t2";
+                select = "cell";
+                path = [ ];
+              })
+            ];
+            t4 = [
+              (route {
+                name = "h3";
+                order = [ 0 ];
+                from = c "t3";
+                select = "cell";
+                path = [ ];
+              })
+            ];
+          };
+        }).check;
+      expectedError.msg = exactly "${pre}: check: 3 route(s) fail: target c.t2 refuses its forwarded content (read the target for the reason); target c.t3 refuses its forwarded content (read the target for the reason); target c.t4 refuses its forwarded content (read the target for the reason)";
+    };
+    test-forward-relay-of-a-returned-occurrence-refuses-its-two-placements = {
+      expr =
+        (run {
+          cells = {
+            t0.c = [
+              [
+                "own"
+                (own "t0")
+              ]
+            ];
+            t1.c = [
+              [
+                "own"
+                (own "t1")
+              ]
+            ];
+            t2.c = [
+              [
+                "own"
+                (own "t2")
+              ]
+            ];
+            x.c = [
+              [
+                "ox"
+                (own "x")
+              ]
+            ];
+          };
+          routes.c = {
+            x = [
+              (route {
+                name = "w";
+                order = [ 0 ];
+                from = c "t1";
+                path = [ ];
+              })
+            ];
+            t1 = [
+              (route {
+                name = "back";
+                order = [ 0 ];
+                from = c "x";
+                select = occ "t1" "c" "own";
+                path = [ "a" ];
+              })
+            ];
+            t2 = [
+              (route {
+                name = "h1";
+                order = [ 0 ];
+                from = c "t1";
+                select = "cell";
+                path = [ ];
+              })
+            ];
+          };
+        }).realized.c.t2;
+      expectedError.msg = exactly "${pre}: occurrence [\"t1\",\"c\",\"own\"] arrives at target c.t2 at 2 paths (a, ; routes t1/h1, t1/h1)";
+    };
     test-forward-check-lists-a-cycle-beside-a-malformed-route = {
       expr = cycleBeside.check;
       expectedError.msg = exactly "${pre}: check: 3 route(s) fail: t4/y3 into c.t3 (on a forwarding cycle); t3/y4 into c.t4 (on a forwarding cycle); target c.t1 refuses its forwarded content (read the target for the reason)";

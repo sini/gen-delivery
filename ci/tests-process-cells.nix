@@ -149,6 +149,49 @@ let
         };
       in
       builtins.deepSeq [ r.realized.c.t0 r.check ] k;
+    # den-hoag-92bpu: `forward`'s relay depth, a W1 chain t0 -> ... -> tn at the root (`importsAt [ ]`), its
+    # deepest target alone realized (`check` not forced); its value is the depth.
+    depth =
+      let
+        d = builtins.fromJSON n;
+        fx = import forwardFixtureSrc {
+          inherit genDelivery;
+          lib = import "${nixpkgsSrc}/lib";
+        };
+        tn = i: "t${toString i}";
+        ix = builtins.genList (i: i) d;
+        r = fx.run {
+          cells = builtins.listToAttrs (
+            map (i: {
+              name = tn i;
+              value.c = [
+                [
+                  "own"
+                  (fx.own (tn i))
+                ]
+              ];
+            }) (ix ++ [ d ])
+          );
+          routes.c = builtins.listToAttrs (
+            map (i: {
+              name = tn (i + 1);
+              value = [
+                (fx.route {
+                  name = "h${toString i}";
+                  order = [ 0 ];
+                  from = {
+                    class = "c";
+                    node = tn i;
+                  };
+                  select = "cell";
+                  path = [ ];
+                })
+              ];
+            }) ix
+          );
+        };
+      in
+      builtins.deepSeq r.realized.c.${tn d} d;
   };
   hostsIn = m: builtins.deepSeq m (builtins.length (builtins.attrNames m));
 in

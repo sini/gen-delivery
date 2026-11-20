@@ -461,7 +461,13 @@ let
                 map (tagK (refKey x.r)) (filter (u: deliversK u (refKey x.r)) (upstream x));
           succK = key: succ (stateOf key);
           # The target's closure as a closed accessor, and its cyclic states (gen-graph `cycles`).
-          closureKeys = c: n: [ (rootKey c n) ] ++ graph.reachableVia succK (rootKey c n);
+          # One closure per target, shared by the cycle analysis and the carriage's tree test.
+          closureMemo = mapAttrs (
+            c: per: mapAttrs (n: _: [ (rootKey c n) ] ++ graph.reachableVia succK (rootKey c n)) per
+          ) routes;
+          closureKeys =
+            c: n:
+            (closureMemo.${c} or { }).${n} or ([ (rootKey c n) ] ++ graph.reachableVia succK (rootKey c n));
           cyclicKeys =
             c: n:
             graph.cycles {
@@ -477,6 +483,7 @@ let
             keysOf
             succK
             deliversK
+            closureKeys
             cyclicKeys
             hasCycle
             ;
@@ -488,6 +495,7 @@ let
         keysOf
         succK
         deliversK
+        closureKeys
         cyclicKeys
         hasCycle
         ;
@@ -805,6 +813,226 @@ let
         in
         if as == [ ] then null else head (settle c n as);
 
+      # ── SHARED CARRIAGE (a tree-shaped, statically placed closure) ──
+      # When no two states of a target's closure select from one cell, no occurrence has two arrival
+      # paths into any cell of it, so every `settle` there is the identity; when no route places its
+      # occurrences apart (`placesApart`), one route's chunk is the same for every occurrence it carries. Then
+      # a cell's received set is carried as ITEMS: a chunkless occurrence, or one (route, path) head
+      # whose body is its source's items, held by reference. A W1 hop costs its own routes and declared
+      # occurrences, never its source's received set again. The probe forces exactly what `received`'s
+      # settles force (buckets, declared sets, the placement of each route that carries something);
+      # any refusal there sends the read to `received`, which raises it in its own order.
+      fromCellOf = x: cellKey x.r.from.class x.r.from.node;
+      treeShaped =
+        c: n:
+        let
+          fs = map (k: fromCellOf (stateOf k)) (builtins.tail (closureKeys c n));
+        in
+        length (uniqueOrdered fs) == length fs;
+      # Placement reads an occurrence only through `captured`, its origin's bindings, and only a W1 route
+      # carries occurrences of more than one origin: a W1 route that reads `captured` (or a `ref` that may
+      # resolve there) places its occurrences apart; every other route has one path for all it carries.
+      placesApart =
+        r:
+        selKind r == "cell"
+        && (
+          let
+            t = tryEval (any (s: isAttrs s && (s ? captured || s ? ref)) r.recipe.importsAt);
+          in
+          !t.success || t.value
+        );
+      itemsMemo = mapAttrs (c: per: mapAttrs (n: _: itemsAt c n) per) routes;
+      itemsOfCell = c: n: (itemsMemo.${c} or { }).${n} or [ ];
+      # A route with an empty placement adds no chunk, so its source's items stand at this level: the
+      # level is read in one ordered pass, a local `genericClosure` loop over an explicit stack (the
+      # construction gen-graph's `preorder.nix` uses internally; a list walk, not ordering), run only on
+      # a list that holds a splice, never by copying a source's items into each cell that embeds it.
+      flatten =
+        its:
+        if any (it: it ? splice) its then
+          let
+            # An explicit-stack pre-order walk: one closure element per step, the stack a cons list of
+            # { cs; i; } cursors, each step's item kept unless it is a splice.
+            step =
+              st:
+              if st.stk == null then
+                [ ]
+              else if st.stk.i >= length st.stk.cs then
+                [
+                  {
+                    key = st.key + 1;
+                    stk = st.stk.t;
+                    out = null;
+                  }
+                ]
+              else
+                let
+                  it = elemAt st.stk.cs st.stk.i;
+                  rest = st.stk // {
+                    i = st.stk.i + 1;
+                  };
+                in
+                [
+                  (
+                    if it ? splice then
+                      {
+                        key = st.key + 1;
+                        stk = {
+                          cs = itemsOfCell it.c it.n;
+                          i = 0;
+                          t = rest;
+                        };
+                        out = null;
+                      }
+                    else
+                      {
+                        key = st.key + 1;
+                        stk = rest;
+                        out = it;
+                      }
+                  )
+                ];
+          in
+          concatMap (st: if st.out == null then [ ] else [ st.out ]) (
+            builtins.genericClosure {
+              startSet = [
+                {
+                  key = 0;
+                  stk = {
+                    cs = its;
+                    i = 0;
+                    t = null;
+                  };
+                  out = null;
+                }
+              ];
+              operator = step;
+            }
+          )
+        else
+          its;
+      itemsAt =
+        c: n:
+        concatMap (
+          r:
+          let
+            k = selKind r;
+            fc = r.from.class;
+            fn = r.from.node;
+            # A W1 route selects its source's received items, then its declared occurrences (`selected`).
+            up = if k == "cell" then itemsOfCell fc fn else [ ];
+            own =
+              if k == "occurrence" then
+                map (x: { inherit (x) occ; }) (selected r)
+              else
+                map (occ: { inherit occ; }) (declared fc fn);
+          in
+          if up == [ ] && own == [ ] then
+            [ ]
+          else if r.recipe.importsAt == [ ] then
+            (
+              if up == [ ] then
+                [ ]
+              else
+                [
+                  {
+                    splice = true;
+                    c = fc;
+                    n = fn;
+                  }
+                ]
+            )
+            ++ own
+          else if placesApart r then
+            # Read only where the route carries something, as `received`'s settle reads the placement.
+            throw "${pre}: shared carriage: route ${rName r} places its occurrences apart"
+          else
+            [
+              {
+                h = true;
+                path = pathOf c n r (if k == "cell" then { captured = { }; } else (head own).occ);
+                body = up ++ own;
+                inherit own;
+                src =
+                  if up == [ ] then
+                    null
+                  else
+                    {
+                      c = fc;
+                      n = fn;
+                    };
+              }
+            ]
+        ) (assembled c n);
+      # The probe, once per cell: this cell's own reads (its bucket, each carrying route's placement, the
+      # keys of what it selects afresh), then the probe of every cell whose items it holds.
+      probeMemo = mapAttrs (c: per: mapAttrs (n: _: probeAt c n) per) routes;
+      probeOk = c: n: (probeMemo.${c} or { }).${n} or true;
+      probeAt =
+        c: n:
+        let
+          its = itemsOfCell c n;
+          local = map (
+            it:
+            if it ? splice then
+              null
+            else if it ? h then
+              [
+                it.path
+                (map (o: o.occ.key) it.own)
+              ]
+            else
+              it.occ.key
+          ) its;
+          srcs = concatMap (
+            it:
+            if it ? splice then
+              [ it ]
+            else if it ? h && it.src != null then
+              [ it.src ]
+            else
+              [ ]
+          ) its;
+        in
+        (tryEval (builtins.deepSeq local true)).success && all (x: probeOk x.c x.n) srcs;
+      sharedOk = c: n: treeShaped c n && probeOk c n;
+      innerItems =
+        its:
+        concatMap (
+          it:
+          if it ? h then
+            [
+              (setAttrByPath it.path (_: {
+                imports = innerItems it.body;
+              }))
+            ]
+          else
+            it.occ.group
+        ) (flatten its);
+      levelItems =
+        its0:
+        let
+          its = flatten its0;
+          tag = it: if it ? h then "p" + toJSON it.path else "o" + it.occ.key;
+          tags = uniqueOrdered (map tag its);
+          byT = groupBy tag its;
+        in
+        concatMap (
+          tg:
+          let
+            g = byT.${tg};
+            d0 = head g;
+          in
+          if d0 ? h then
+            [
+              (setAttrByPath d0.path (_: {
+                imports = concatMap (it: innerItems it.body) g;
+              }))
+            ]
+          else
+            d0.occ.group
+        ) tags;
+
       # ── EMISSION (a″) ──
       # At the realized TARGET's own level, arm (a): one function-form module per resolved path, at
       # the position of the first occurrence there, holding everything placed below that path. Below
@@ -848,6 +1076,8 @@ let
         c: n:
         if hasCycle c n then
           throw "${pre}: target ${at c n} is affected by a forwarding cycle: ${concatStringsSep "; " (cyclicIn c n)} lie on a cycle, and the target receives what they carry"
+        else if sharedOk c n then
+          levelItems (itemsOfCell c n)
         else
           level (received c n);
       wrapper = c: n: _: { imports = forwardedModules c n; };
@@ -1151,10 +1381,20 @@ let
       refusing = filter (
         t:
         !(tryEval (
-          builtins.deepSeq (map (d: [
-            d.occ.key
-            d.chunks
-          ]) (if hasCycle t.c t.n then throw "cycle" else received t.c t.n)) true
+          builtins.deepSeq (map
+            (d: [
+              d.occ.key
+              d.chunks
+            ])
+            (
+              if hasCycle t.c t.n then
+                throw "cycle"
+              else if sharedOk t.c t.n then
+                [ ]
+              else
+                received t.c t.n
+            )
+          ) true
         )).success
       ) targets;
       # Every state any bucket reaches, and the cyclic ones (gen-graph `cycles` over the closed set).
