@@ -1118,7 +1118,21 @@ let
             (if declaresKey fc fn key then acc else builtins.seq (tryEval (receivedDK fc fn key)).success acc)
           else
             builtins.seq (cellStep fc fn) acc
-        ) true (reverse (builtins.tail (closureKeys c n)));
+        ) true (fillOrder c n);
+      # Sources first. In a tree-shaped closure each source cell is selected by one state (or twins in one
+      # holding cell, discovered together), so every state's successors are discovered after it and the
+      # closure's own order, reversed, is topological. Elsewhere a later-discovered state can select from a
+      # cell an earlier one reached first (a relay with shortcuts), so the order is gen-graph's Kahn arm,
+      # the driver `coneRank` warms with; an acyclic closure is the only one read here.
+      fillOrder =
+        c: n:
+        if treeShaped c n then
+          reverse (builtins.tail (closureKeys c n))
+        else
+          (graph.topoOrderKahn { } {
+            nodes = builtins.tail (closureKeys c n);
+            edges = k: keysOf (succK k);
+          }).order;
       probed = c: n: builtins.seq (fill probeOk c n) (probeOk c n);
       receivedFilled = c: n: builtins.seq (fill received c n) (received c n);
       # Every state of the closure places at importsAt [ ]: every arrival's chunk list is empty, so settle's
