@@ -722,7 +722,7 @@ let
         else
           let
             key = refKey r;
-            got = receivedDK fc fn key;
+            got = (dkOf fc fn).${key} or (receivedDKAt fc fn key);
           in
           if declaresKey fc fn key then
             fresh [ (declOcc fc fn key) ]
@@ -793,7 +793,7 @@ let
               [ (place c n r (declOcc fc fn k) [ ]) ]
             else
               let
-                d = receivedDK fc fn k;
+                d = (dkOf fc fn).${k} or (receivedDKAt fc fn k);
               in
               if d == null then [ ] else [ (place c n r d.occ (if keepSub then d.chunks else [ ])) ];
         in
@@ -811,7 +811,9 @@ let
       dkMemo = mapAttrs (
         c: per: mapAttrs (n: _: mapAttrs (k: _: receivedDKAt c n k) (consumed c n).keys) per
       ) routes;
-      receivedDK = c: n: k: ((dkMemo.${c} or { }).${n} or { }).${k} or (receivedDKAt c n k);
+      # Read inline at each call site (`(dkOf c n).${k} or (receivedDKAt c n k)`), never through a wrapper:
+      # a wrapper adds one frame per hop to a key walk the memo does not hold (a W1 run inside a relay).
+      dkOf = c: n: (dkMemo.${c} or { }).${n} or { };
       receivedDKAt =
         c: n: k:
         let
@@ -1119,10 +1121,10 @@ let
             acc
           else if x ? rk || kd == "occurrence" then
             (
-              if declaresKey fc fn key || !(((dkMemo.${fc} or { }).${fn} or { }) ? ${key}) then
+              if declaresKey fc fn key || !(dkOf fc fn ? ${key}) then
                 acc
               else
-                builtins.seq (receivedDK fc fn key) acc
+                builtins.seq (dkOf fc fn).${key} acc
             )
           else
             builtins.seq (cellStep fc fn) acc
