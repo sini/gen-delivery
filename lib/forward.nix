@@ -475,20 +475,41 @@ let
             mapAttrs (
               n: _:
               listToAttrs (
-                map (k: {
-                  name = k;
-                  value = keysOf (succK k);
-                }) (closureKeys c n)
+                map (
+                  k:
+                  let
+                    s = succK k;
+                  in
+                  {
+                    name = k;
+                    # In the bucket's declared order (`assembled`'s), so the walk visits sources as the
+                    # read does; the cyclic set does not depend on it.
+                    value = keysOf (if s == [ ] || builtins.tail s == [ ] then s else sortBy (y: y.r.order) s);
+                  }
+                ) (closureKeys c n)
               )
             ) per
           ) routes;
           edgesIn = c: n: k: ((edgeMemo.${c} or { }).${n} or { }).${k} or (keysOf (succK k));
-          cyclicKeys =
+          # One gen-graph lowlink run per target (`cycleOrder`, the run `cycles` makes): the cyclic set, and
+          # the components in the order the run pops them, the fill's order.
+          cycleMemo = mapAttrs (
+            c: per:
+            mapAttrs (
+              n: _:
+              graph.cycleOrder {
+                nodes = closureKeys c n;
+                edges = edgesIn c n;
+              }
+            ) per
+          ) routes;
+          cycleOf =
             c: n:
-            graph.cycles {
+            (cycleMemo.${c} or { }).${n} or (graph.cycleOrder {
               nodes = closureKeys c n;
               edges = edgesIn c n;
-            };
+            });
+          cyclicKeys = c: n: (cycleOf c n).cyclic;
           hasCycle = c: n: cyclicKeys c n != [ ];
         in
         {
@@ -500,6 +521,7 @@ let
             deliversK
             closureKeys
             edgesIn
+            cycleOf
             cyclicKeys
             hasCycle
             ;
@@ -513,6 +535,7 @@ let
         deliversK
         closureKeys
         edgesIn
+        cycleOf
         cyclicKeys
         hasCycle
         ;
@@ -866,7 +889,7 @@ let
       # any refusal there sends the read to `received`, which raises it in its own order.
       # One attribute per closure state, named by its source cell: fewer names than states is two states
       # selecting from one cell. A name collision can only read a tree as shared, which falls back.
-      # The closure's states, decoded once per target and shared by the tree test and the fill.
+      # The closure's states, decoded once per target and shared by the tree test's two counts.
       statesMemo = mapAttrs (
         c: per: mapAttrs (n: _: map stateOf (builtins.tail (closureKeys c n))) per
       ) routes;
@@ -1136,13 +1159,12 @@ let
       # ── THE SOURCE-FIRST FILL (gen-graph `coneRank`'s warming driver) ──
       # Each carriage memo above is a demand recursion: a cell's entry forces its sources' entries while it
       # is itself being evaluated, one evaluator frame chain per hop. `fill` forces them sources first, one
-      # entry per `foldl'` step, over the target's closure deepest first, so each entry finds its sources
-      # already forced and the read costs constant stack in relay depth. A step forces only what the read
-      # forces: a W1 state its source's cell entry (`cellStep`), a key-scoped state its source's arrival
-      # where `selMemo` holds it (an occurrence state; a W1 state's key walk has no entry, and computing it
-      # here would drop it), a declared state nothing. A refusal is raised at the first refusing entry in this order, where the read raises it
-      # (gen-graph `preorder.nix`'s contract for a flattened walk: with two faults, the one reported can
-      # differ from the recursive walk's); a read that succeeds forces exactly what it forced before.
+      # entry per `foldl'` step, so each entry finds its sources already forced and the read costs constant
+      # stack in relay depth. A step forces only what the read forces: a W1 state its source's cell entry
+      # (`cellStep`), an occurrence state its `selMemo` entry, a W1 state carrying a key nothing (its walk is
+      # not held), a declared state nothing. A step is forced bare. The probe's entries are data (`probeOk`
+      # is total, and no item list is read through a failed probe), so a failing entry is never re-forced;
+      # `received`'s first refusing entry ends the read with its refusal, the one the recursive read raises.
       fill =
         cellStep: c: n:
         foldl' (
@@ -1166,59 +1188,15 @@ let
           else
             builtins.seq (cellStep fc fn) acc
         ) true (fillOrder c n);
-      # Sources first. In a tree-shaped closure each source cell is selected by one state (or twins in one
-      # holding cell, discovered together), so every state's successors are discovered after it and the
-      # closure's own order, reversed, is topological. Elsewhere a later-discovered state can select from a
-      # cell an earlier one reached first (a relay with shortcuts); where it does, the order is the
-      # closure's depth-first post-order, read off gen-graph's `expandPreorder` walk (the visited set is
-      # gen-graph's, as `flattenDag`'s): each state's frame is followed by an exit frame after its
-      # successors, so the exits stand in post-order, every state after its successors. Only an acyclic
-      # closure is read here.
+      # Sources first: the closure's states in the order gen-graph's lowlink run pops them, the run
+      # `cyclicKeys` already makes (`cycleOf`). On an acyclic closure every component is one state, and
+      # Tarjan pops a state after every state it reaches, so each finds its sources already forced. The
+      # run starts at the target and visits each state's sources in the bucket's declared order
+      # (`edgesIn`), so the first refusing entry is the one the recursive read reaches first. Only an
+      # acyclic closure is read here.
       fillOrder =
         c: n:
-        let
-          xs = statesOf c n;
-          # Where the closure's own order already places every state before its successors (a merge
-          # ladder does), it is used reversed; the check reads the successors the cycle analysis read.
-          pos = listToAttrs (
-            genList (i: {
-              name = (elemAt xs i).key;
-              value = i;
-            }) (length xs)
-          );
-          inOrder = all (i: all (y: pos.${y} > i) (edgesIn c n (elemAt xs i).key)) (genList (i: i) (length xs));
-        in
-        if treeShaped c n || inOrder then
-          reverse xs
-        else
-          map (f: stateOf f.k) (
-            filter (f: f.exit && f.k != rootKey c n) (
-              (graph.expandPreorder { } {
-                roots = [
-                  {
-                    k = rootKey c n;
-                    exit = false;
-                  }
-                ];
-                key = f: if f.exit then null else f.k;
-                edges =
-                  f:
-                  if f.exit then
-                    [ ]
-                  else
-                    map (k: {
-                      inherit k;
-                      exit = false;
-                    }) (edgesIn c n f.k)
-                    ++ [
-                      {
-                        inherit (f) k;
-                        exit = true;
-                      }
-                    ];
-              }).nodes
-            )
-          );
+        map stateOf (filter (k: k != rootKey c n) (builtins.concatLists (cycleOf c n).popped));
       probed = c: n: builtins.seq (fill probeOk c n) (probeOk c n);
       receivedFilled = c: n: builtins.seq (fill received c n) (received c n);
       # Every state of the closure places at importsAt [ ]: every arrival's chunk list is empty, so settle's
