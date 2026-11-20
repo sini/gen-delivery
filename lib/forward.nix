@@ -1021,7 +1021,18 @@ let
             fc = r.from.class;
             fn = r.from.node;
             # A W1 route selects its source's received items, then its declared occurrences (`selected`).
-            up = if k == "cell" then itemsOfCell fc fn else [ ];
+            # The source's items are read only where its probe holds: a source whose probe fails (its item
+            # list may itself throw) stands as one placeholder, so the route still carries something and
+            # this cell's probe fails through it, and no read here forces a thrown list a second time. The
+            # probe's outcome is data, so on an evaluator that re-runs a thrown thunk each time it is forced
+            # (Lix) a failing foot is not re-entered once per cell above it.
+            up =
+              if k != "cell" then
+                [ ]
+              else if probeOk fc fn then
+                itemsOfCell fc fn
+              else
+                [ { failed = true; } ];
             own =
               if k == "occurrence" then
                 map (x: { inherit (x) occ; }) (selected c n r)
