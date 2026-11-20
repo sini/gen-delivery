@@ -822,13 +822,23 @@ let
       # occurrences, never its source's received set again. The probe forces exactly what `received`'s
       # settles force (buckets, declared sets, the placement of each route that carries something);
       # any refusal there sends the read to `received`, which raises it in its own order.
-      fromCellOf = x: cellKey x.r.from.class x.r.from.node;
+      # One attribute per closure state, named by its source cell: fewer names than states is two states
+      # selecting from one cell. A name collision can only read a tree as shared, which falls back.
       treeShaped =
         c: n:
         let
-          fs = map (k: fromCellOf (stateOf k)) (builtins.tail (closureKeys c n));
+          fs = map (
+            k:
+            let
+              x = stateOf k;
+            in
+            {
+              name = "${x.r.from.class}\n${x.r.from.node}";
+              value = null;
+            }
+          ) (builtins.tail (closureKeys c n));
         in
-        length (uniqueOrdered fs) == length fs;
+        length (attrNames (listToAttrs fs)) == length fs;
       # Placement reads an occurrence only through `captured`, its origin's bindings, and only a W1 route
       # carries occurrences of more than one origin: a W1 route that reads `captured` (or a `ref` that may
       # resolve there) places its occurrences apart; every other route has one path for all it carries.
