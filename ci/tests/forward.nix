@@ -1465,6 +1465,44 @@ let
       })
     ];
   };
+  # ── lrnaw: a route carrying an undeclared key (a closure `guard`) into pewter, sibling welt. The
+  # source class has a terminal: with none, C2's stripping reads every route, and every route check
+  # then refuses on any target's read, the key check as its siblings do. ──
+  guarded =
+    extra:
+    run {
+      cells = {
+        pewter.c = [
+          [
+            "own"
+            (own "pewter")
+          ]
+        ];
+        welt.c = [
+          [
+            "own"
+            (own "welt")
+          ]
+        ];
+        damask.x = [
+          [
+            "o1"
+            (t "A")
+          ]
+        ];
+      };
+      routes.c.pewter = [
+        (
+          route {
+            name = "g";
+            order = [ 0 ];
+            from = x "damask";
+          }
+          // extra
+        )
+      ];
+      extraTerminals = xT;
+    };
 in
 {
   flake.tests.forward = {
@@ -1962,6 +2000,27 @@ in
     test-g9-duplicate-under-an-aborting-body-is-catchable = {
       expr = (builtins.tryEval (builtins.deepSeq dupAbort.realized.c.pewter null)).success;
       expected = false;
+    };
+
+    # An undeclared route key refuses catchably at its own target; the sibling stays usable, and the
+    # route without the key delivers. RED: `forward` ignoring the key delivers "A\nR" (ADMITTED).
+    test-route-undeclared-key-is-caught-at-its-target-only = {
+      expr = {
+        caught =
+          if
+            (builtins.tryEval (builtins.deepSeq (guarded { guard = _: false; }).realized.c.pewter null)).success
+          then
+            "ADMITTED"
+          else
+            "CAUGHT";
+        sibling = thread (guarded { guard = _: false; }) "welt";
+        without = thread (guarded { }) "pewter";
+      };
+      expected = {
+        caught = "CAUGHT";
+        sibling = "R";
+        without = "A\nR";
+      };
     };
 
     # ── G10: laziness ──

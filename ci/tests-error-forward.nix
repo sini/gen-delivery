@@ -1,6 +1,11 @@
 # `forward`'s refusal MESSAGES (the error plane; why a second output: `tests-error.nix`'s header).
 # Every pattern is the literal text, escaped and anchored at both ends.
-{ genDelivery, lib, ... }:
+{
+  genDelivery,
+  lib,
+  prelude,
+  ...
+}:
 let
   exactly = msg: "^" + lib.escapeRegex msg + "$";
   fx = import ./forward-fixture.nix { inherit genDelivery lib; };
@@ -343,6 +348,48 @@ in
           ];
         }).realized;
       expectedError.msg = exactly "gen-delivery: realize: node damask carries declared s content, and class s has no terminal — the content would be dropped";
+    };
+
+    # ── an undeclared key on a closed resolved-form record refuses by name, with gen-prelude's shared
+    # text (lrnaw). RED: `forward` ignoring the key returns a value. ──
+    test-forward-route-undeclared-key-refuses-by-name = {
+      expr = at [
+        (
+          route {
+            name = "r2";
+            order = [ 1 ];
+            from = x "damask";
+            select = occ "damask" "x" "o2";
+          }
+          // {
+            guard = _: false;
+          }
+        )
+      ];
+      expectedError.msg = exactly (
+        prelude.refusals.unknownOption "${pre}: route into c.pewter: damask/r2" [
+          "from"
+          "name"
+          "order"
+          "producer"
+          "recipe"
+          "required"
+          "site"
+        ] "guard"
+      );
+    };
+    test-forward-unresolved-undeclared-key-refuses-by-name = {
+      expr = (unresolvedRun [ ((un "n2" "N" false) // { reasn = "typo"; }) ]).check;
+      expectedError.msg = exactly (
+        prelude.refusals.unknownOption "${pre}: unresolved: damask/n2" [
+          "name"
+          "producer"
+          "reason"
+          "required"
+          "site"
+          "status"
+        ] "reasn"
+      );
     };
 
     # ── G3: the check, a separate value, names every failing route ──

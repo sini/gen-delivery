@@ -27,6 +27,9 @@
   label ? "",
   # The fixture size, as a string (`--argstr`).
   n ? "0",
+  # `forward-fixture.nix` and nixpkgs, whose module system is its receiver (the `width` arm only).
+  forwardFixtureSrc ? null,
+  nixpkgsSrc ? null,
 }:
 let
   prelude = import "${genPreludeSrc}/lib";
@@ -101,6 +104,51 @@ let
     members3 = hostsIn (at 3).members;
     # Every host's artifact read; its value is the host count.
     every = hostsIn (at 1).every;
+    # den-hoag-lrnaw: `forward`'s bucket width, n routes from n producers into ONE target, its
+    # delivery and `check` forced; its value is the route count.
+    width =
+      let
+        k = builtins.fromJSON n;
+        fx = import forwardFixtureSrc {
+          inherit genDelivery;
+          lib = import "${nixpkgsSrc}/lib";
+        };
+        ix = builtins.genList (i: toString i) k;
+        r = fx.run {
+          cells = {
+            t0.c = [
+              [
+                "own"
+                (fx.own "t0")
+              ]
+            ];
+          }
+          // builtins.listToAttrs (
+            map (i: {
+              name = "p${i}";
+              value.s = [
+                [
+                  "o${i}"
+                  (fx.t "X${i}")
+                ]
+              ];
+            }) ix
+          );
+          routes.c.t0 = map (
+            i:
+            fx.route {
+              name = "g${i}";
+              order = [ (builtins.fromJSON i) ];
+              from = {
+                class = "s";
+                node = "p${i}";
+              };
+            }
+          ) ix;
+          extraTerminals.s = _: null;
+        };
+      in
+      builtins.deepSeq [ r.realized.c.t0 r.check ] k;
   };
   hostsIn = m: builtins.deepSeq m (builtins.length (builtins.attrNames m));
 in

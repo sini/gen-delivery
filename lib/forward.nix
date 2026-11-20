@@ -34,6 +34,8 @@
 #   recipe          { importsAt = [ segment ]; } — the M1 family only (D7).
 # `unresolved` is `[ { name; producer; site; required ? true; status; reason; } ]`, the routes the
 # resolver could not place (status "N" no target, "E" excluded, "R" refused). They need no address.
+# A route and an `unresolved` entry are CLOSED records: any other key refuses by name, with the
+# route or the entry (gen-prelude's shared `unknownOption` text). `from` stays open.
 #
 # ── OCCURRENCES ARE A VIEW OF THE PROJECTION ──
 # A source cell (class c, node n) exposes its declared contribution as OCCURRENCES: one per
@@ -145,6 +147,31 @@ let
   rName = r: "${r.producer}/${r.name}";
   sitesOf = rs: concatStringsSep ", " (map (r: toString (r.site or "<no site>")) rs);
 
+  # The DECLARED keys of the two mixed resolved-form records, the keys `forward` reads (grammar
+  # §v1.2: a record with a defaulted field is closed over its whole set). A slice that reads a new
+  # key declares it here in the same change. `from` stays open: it has no optional field (§v1.2).
+  routeKeys = [
+    "from"
+    "name"
+    "order"
+    "producer"
+    "recipe"
+    "required"
+    "site"
+  ];
+  unresolvedKeys = [
+    "name"
+    "producer"
+    "reason"
+    "required"
+    "site"
+    "status"
+  ];
+  # Refuses with gen-prelude's shared text, naming the first undeclared key (attrNames order).
+  refuseUndeclared =
+    door: keys: x:
+    throw (prelude.refusals.unknownOption door keys (head (attrNames (builtins.removeAttrs x keys))));
+
   forwardCore =
     o: terminals: projected:
     let
@@ -176,12 +203,26 @@ let
               ) acc (attrNames per)
           ) null (attrNames routes);
 
-      bucketOf =
+      rawBucketOf =
         c: n:
         let
           b = (routes.${c} or { }).${n} or [ ];
         in
         if isList b then b else throw "${pre}: routes.${c}.${n} must be a list of routes, got ${typeOf b}";
+      # The declared-key check runs ONCE per route, in this per-bucket memo every reader takes its
+      # bucket from (`checkRoute` is re-applied on every read; this check is not). A route that does
+      # not name itself is left to `checkRoute`, whose refusal comes first.
+      keyChecked =
+        c: n: r:
+        if !(isAttrs r) || !(isString (r.name or null)) || !(isString (r.producer or null)) then
+          r
+        else if builtins.removeAttrs r routeKeys != { } then
+          refuseUndeclared "${pre}: route into ${at c n}: ${rName r}" routeKeys r
+        else
+          r;
+      bucketMemo = mapAttrs (c: per: mapAttrs (n: _: map (keyChecked c n) (rawBucketOf c n)) per) routes;
+      bucketOf =
+        c: n: if routes ? ${c} && routes.${c} ? ${n} then bucketMemo.${c}.${n} else rawBucketOf c n;
 
       # ── ONE ROUTE, CHECKED WHERE IT IS READ ──
       checkRoute =
@@ -933,6 +974,8 @@ let
               ])
             then
               throw "${pre}: unresolved: each entry is { name; producer; site; required; status = \"N\" | \"E\" | \"R\"; reason; }"
+            else if builtins.removeAttrs u unresolvedKeys != { } then
+              refuseUndeclared "${pre}: unresolved: ${rName u}" unresolvedKeys u
             else
               u // { required = u.required or true; }
           ) unresolved;

@@ -34,6 +34,7 @@
           export genTypesSrc=${inputs.gen-aspects.inputs.gen-merge.inputs.gen-types}
           export genMemoSrc=${inputs.gen-aspects.inputs.gen-merge.inputs.gen-memo}
           export genGraphSrc=${inputs.gen-aspects.inputs.gen-schema.inputs.gen-graph}
+          export forwardFixtureSrc=${./forward-fixture.nix} nixpkgsSrc=${inputs.nixpkgs}
           # A fresh working directory per run (gen-harness `process-plane.nix`).
           TMPDIR=$(mktemp -d) out=$(mktemp)
           export TMPDIR out
@@ -83,6 +84,8 @@
               --argstr genSchemaSrc "$genSchemaSrc" \
               --argstr genAspectsSrc "$genAspectsSrc" \
               --argstr genAspectsAlgebraSrc "$genAspectsAlgebraSrc" \
+              --argstr forwardFixtureSrc "$forwardFixtureSrc" \
+              --argstr nixpkgsSrc "$nixpkgsSrc" \
               --argstr label "$label" \
               --argstr n "$2" \
               "$cells" 2> "$TMPDIR/err") || rc=$?
@@ -92,6 +95,8 @@
             [ -s "$TMPDIR/stats" ] || die "$1" "n=$2: could not measure, no statistics written"
             thunks=$(sed -n 's/.*"nrThunks": *\([0-9][0-9]*\).*/\1/p' "$TMPDIR/stats")
             [ -n "$thunks" ] || die "$1" "n=$2: could not measure, no nrThunks in the statistics"
+            bytes=$(sed -n 's/.*"totalBytes": *\([0-9][0-9]*\).*/\1/p' "$TMPDIR/stats")
+            [ -n "$bytes" ] || die "$1" "n=$2: could not measure, no gc.totalBytes in the statistics"
             resolves=$(grep -c "trace: $label\$" "$TMPDIR/err" || true)
           }
 
@@ -152,9 +157,32 @@
             prev=$n pe=$e pf=$f
           done
 
+          # den-hoag-lrnaw: `forward`'s declared-key check runs once per route, so it adds no per-route
+          # cost that grows with the bucket width. Placed per `checkRoute` application it read quadratic,
+          # in thunks with a `from` check and in bytes with the route check alone. Thunks are bounded per
+          # route over k = 1..16 and 16..64, bytes over 16..64 (Determinate allocates in blocks too coarse
+          # for 1..16), each bound measured on all three evaluators. The route cost's quadratic term
+          # predates the check (den-hoag-in23c), so a lower count only ever passes.
+          at width 1 1; wt1=$thunks wb1=$bytes
+          at width 16 16; wt16=$thunks wb16=$bytes
+          at width 64 64; wt64=$thunks wb64=$bytes
+          ta=$(((wt16 - wt1) / 15)) tb=$(((wt64 - wt16) / 48)) bb=$(((wb64 - wb16) / 48))
+          echo "forward-width: $ta / $tb thunks per route over k = 1..16 / 16..64, $bb bytes over 16..64 ($wt1 / $wt16 / $wt64 thunks)"
+          [ "$ta" -gt 0 ] && [ "$bb" -gt 0 ] || die forward-width "could not measure: no cost per route ($wt1 / $wt16 thunks, $wb16 / $wb64 bytes)"
+          [ "$ta" -le 4700 ] && [ "$tb" -le 17200 ] \
+            || die forward-width "a route costs more thunks as the bucket widens than bounded: $ta / $tb over k = 1..16 / 16..64"
+          # Bytes per route differ by evaluator family as much as the defect does, so each has its own.
+          case "$(nix-instantiate --version)" in
+            *Lix*) bmax=740000 ;;
+            *Determinate*) bmax=617000 ;;
+            *) bmax=647000 ;;
+          esac
+          [ "$bb" -le "$bmax" ] \
+            || die forward-width "a route costs more bytes as the bucket widens than bounded: $bb over k = 16..64, bound $bmax"
+
           # 0/0 is a false pass: the runner must have executed every evaluation above.
-          [ "$ran" = "18" ] || die runner "expected 18 evaluations, ran $ran"
-          echo "tests-process: 5 cells, every exit read unpiped, every count read" > $out
+          [ "$ran" = "21" ] || die runner "expected 21 evaluations, ran $ran"
+          echo "tests-process: 6 cells, every exit read unpiped, every count read" > $out
         ''
         + ''
           cat "$out"
