@@ -805,7 +805,14 @@ let
           [ ]
         else
           viaSource false;
-      receivedDK =
+      # One entry per (cell, key) an occurrence route selects from the cell (C2's consumption table, the
+      # keys a relay reads there), so a relay of relays shares each arrival as the cell carriage does; a
+      # key no route selects from the cell is computed where it is read.
+      dkMemo = mapAttrs (
+        c: per: mapAttrs (n: _: mapAttrs (k: _: receivedDKAt c n k) (consumed c n).keys) per
+      ) routes;
+      receivedDK = c: n: k: ((dkMemo.${c} or { }).${n} or { }).${k} or (receivedDKAt c n k);
+      receivedDKAt =
         c: n: k:
         let
           rs = filter (r: deliversK (item c n r) k) (assembled c n);
@@ -1086,7 +1093,34 @@ let
           ) its;
         in
         (tryEval (builtins.deepSeq local true)).success && all (x: probeOk x.c x.n) srcs;
-      sharedOk = c: n: (treeShaped c n || flatPlaced c n) && probeOk c n;
+      sharedOk = c: n: (treeShaped c n || flatPlaced c n) && probed c n;
+      # ── THE SOURCE-FIRST FILL (gen-graph `coneRank`'s warming driver) ──
+      # Each carriage memo above is a demand recursion: a cell's entry forces its sources' entries while it
+      # is itself being evaluated, one evaluator frame chain per hop. `fill` forces them sources first, one
+      # entry per `foldl'` step, over the target's closure deepest first, so each entry finds its sources
+      # already forced and the read costs constant stack in relay depth. A step forces only what the read
+      # forces: a W1 state its source's cell entry (`cellStep`), a key-scoped state its source's arrival
+      # (under `tryEval`: a refusal there is raised by the read, in its own order), a declared state nothing.
+      fill =
+        cellStep: c: n:
+        foldl' (
+          acc: k:
+          let
+            x = stateOf k;
+            fc = x.r.from.class;
+            fn = x.r.from.node;
+            kd = kindOf x;
+            key = x.rk or (refKey x.r);
+          in
+          if kd == "declared" then
+            acc
+          else if x ? rk || kd == "occurrence" then
+            (if declaresKey fc fn key then acc else builtins.seq (tryEval (receivedDK fc fn key)).success acc)
+          else
+            builtins.seq (cellStep fc fn) acc
+        ) true (reverse (builtins.tail (closureKeys c n)));
+      probed = c: n: builtins.seq (fill probeOk c n) (probeOk c n);
+      receivedFilled = c: n: builtins.seq (fill received c n) (received c n);
       # Every state of the closure places at importsAt [ ]: every arrival's chunk list is empty, so settle's
       # conflict filter is vacuous and settle is first occurrence by key, which levelItems performs.
       flatPlaced =
@@ -1200,11 +1234,11 @@ let
         if hasCycle c n then
           throw "${pre}: target ${at c n} is affected by a forwarding cycle: ${concatStringsSep "; " (cyclicIn c n)} lie on a cycle, and the target receives what they carry"
         else if treeShaped c n then
-          (if probeOk c n then levelItems (itemsOfCell c n) else level (received c n))
-        else if flatPlaced c n && probeOk c n then
+          (if probed c n then levelItems (itemsOfCell c n) else level (receivedFilled c n))
+        else if flatPlaced c n && probed c n then
           levelItems (flattenDag (itemsOfCell c n))
         else
-          level (received c n);
+          level (receivedFilled c n);
       wrapper = c: n: _: { imports = forwardedModules c n; };
 
       # ── C2: CONSUMED CONTENT OF A CELL WITH NO TERMINAL ──
@@ -1517,7 +1551,7 @@ let
               else if sharedOk t.c t.n then
                 [ ]
               else
-                received t.c t.n
+                receivedFilled t.c t.n
             )
           ) true
         )).success
