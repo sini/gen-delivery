@@ -209,9 +209,9 @@ let
           b = (routes.${c} or { }).${n} or [ ];
         in
         if isList b then b else throw "${pre}: routes.${c}.${n} must be a list of routes, got ${typeOf b}";
-      # The declared-key check runs ONCE per route, in this per-bucket memo every reader takes its
-      # bucket from (`checkRoute` is re-applied on every read; this check is not). A route that does
-      # not name itself is left to `checkRoute`, whose refusal comes first.
+      # Every route check runs ONCE per route, in this per-bucket memo every reader takes its bucket
+      # from: the declared-key check, then `checkRoute`. A route that does not name itself is left to
+      # `checkRoute`, whose refusal comes first.
       keyChecked =
         c: n: r:
         if !(isAttrs r) || !(isString (r.name or null)) || !(isString (r.producer or null)) then
@@ -220,11 +220,25 @@ let
           refuseUndeclared "${pre}: route into ${at c n}: ${rName r}" routeKeys r
         else
           r;
-      bucketMemo = mapAttrs (c: per: mapAttrs (n: _: map (keyChecked c n) (rawBucketOf c n)) per) routes;
-      bucketOf =
-        c: n: if routes ? ${c} && routes.${c} ? ${n} then bucketMemo.${c}.${n} else rawBucketOf c n;
+      itemMemo = mapAttrs (
+        c: per: mapAttrs (n: _: map (r: item c n (checkRoute c n (keyChecked c n r))) (rawBucketOf c n)) per
+      ) routes;
+      itemsOf = c: n: (itemMemo.${c} or { }).${n} or [ ];
+      # The checked states of a bucket by state key: a key decodes by lookup, never by a bucket scan.
+      indexMemo = mapAttrs (
+        c: per:
+        mapAttrs (
+          n: _:
+          listToAttrs (
+            map (x: {
+              name = x.key;
+              value = x;
+            }) (itemsOf c n)
+          )
+        ) per
+      ) routes;
 
-      # ── ONE ROUTE, CHECKED WHERE IT IS READ ──
+      # ── ONE ROUTE, CHECKED ONCE, IN ITS BUCKET'S MEMO (`itemMemo`) ──
       checkRoute =
         c: n: r:
         let
@@ -348,20 +362,15 @@ let
       # stop at a cell that declares L (K3), since a cycle that carries L there taints it. The graph
       # algorithms (reachability, the cyclic set) are gen-graph's (ADR-0009); keys are decoded back to
       # states lazily, so a walk touches only the buckets it reaches.
-      item =
-        c: n: r0:
-        let
-          r = checkRoute c n r0;
-        in
-        {
-          key = toJSON [
-            c
-            n
-            r.producer
-            r.name
-          ];
-          inherit c n r;
-        };
+      item = c: n: r: {
+        key = toJSON [
+          c
+          n
+          r.producer
+          r.name
+        ];
+        inherit c n r;
+      };
       tagK =
         k: x:
         x
@@ -398,12 +407,21 @@ let
           }
         else
           let
-            x = head (
-              filter (x: x.r.producer == elemAt j 2 && x.r.name == elemAt j 3) (map (item c n) (bucketOf c n))
-            );
+            x =
+              indexMemo.${c}.${n}.${
+                if length j == 5 then
+                  toJSON [
+                    c
+                    n
+                    (elemAt j 2)
+                    (elemAt j 3)
+                  ]
+                else
+                  key
+              };
           in
           if length j == 5 then tagK (elemAt j 4) x else x;
-      upstream = x: map (item x.r.from.class x.r.from.node) (bucketOf x.r.from.class x.r.from.node);
+      upstream = x: itemsOf x.r.from.class x.r.from.node;
       kindOf = x: selKind x.r;
       keysOf = map (x: x.key);
       # The W1 routes upstream of `u`, `u` included: whatever reaches `u`'s target whole.
@@ -423,7 +441,7 @@ let
       succ =
         x:
         if x ? root then
-          map (item x.c x.n) (bucketOf x.c x.n)
+          itemsOf x.c x.n
         else if x ? rk then
           if kindOf x == "declared" then [ ] else map (tagK x.rk) (filter (u: deliversK u x.rk) (upstream x))
         else
@@ -453,7 +471,7 @@ let
       assembled =
         c: n:
         let
-          rs = map (checkRoute c n) (bucketOf c n);
+          rs = map (x: x.r) (itemsOf c n);
           byR = groupBy (
             r:
             toJSON [
@@ -742,9 +760,7 @@ let
       wrapper = c: n: _: { imports = forwardedModules c n; };
 
       # ── C2: CONSUMED CONTENT OF A CELL WITH NO TERMINAL ──
-      allRoutes = concatMap (c: concatMap (n: map (item c n) (bucketOf c n)) (attrNames routes.${c})) (
-        attrNames routes
-      );
+      allRoutes = concatMap (c: concatMap (itemsOf c) (attrNames routes.${c})) (attrNames routes);
       consumedBy = groupBy (
         x:
         toJSON [
@@ -794,12 +810,8 @@ let
           nn = elemAt j 1;
         in
         concatMap (
-          r:
-          if selKind (checkRoute cc nn r) == "cell" then
-            [ { key = cellKey r.from.class r.from.node; } ]
-          else
-            [ ]
-        ) (bucketOf cc nn);
+          x: if selKind x.r == "cell" then [ { key = cellKey x.r.from.class x.r.from.node; } ] else [ ]
+        ) (itemsOf cc nn);
       keysInto =
         c: n:
         concatMap (
@@ -810,12 +822,12 @@ let
             nn = elemAt j 1;
           in
           concatMap (
-            r:
-            if selKind (checkRoute cc nn r) == "occurrence" then
-              [ (refKey r) ]
+            x:
+            if selKind x.r == "occurrence" then
+              [ (refKey x.r) ]
             else
-              map (x: x.key) (declared r.from.class r.from.node)
-          ) (bucketOf cc nn)
+              map (o: o.key) (declared x.r.from.class x.r.from.node)
+          ) (itemsOf cc nn)
         ) ([ (cellKey c n) ] ++ graph.reachableVia cellsWhole (cellKey c n));
       leftover =
         c: n:
@@ -875,7 +887,7 @@ let
           cellOf =
             c:
             let
-              hasBucket = bucketOf c n != [ ];
+              hasBucket = itemsOf c n != [ ];
               base =
                 if own ? ${c} then
                   {
@@ -980,7 +992,7 @@ let
               u // { required = u.required or true; }
           ) unresolved;
       targets = concatMap (
-        c: map (n: { inherit c n; }) (filter (n: bucketOf c n != [ ]) (attrNames routes.${c}))
+        c: map (n: { inherit c n; }) (filter (n: itemsOf c n != [ ]) (attrNames routes.${c}))
       ) (attrNames routes);
       refusing = filter (
         t:

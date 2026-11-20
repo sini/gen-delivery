@@ -128,6 +128,56 @@ let
       unresolved = u;
       extraTerminals = xT;
     };
+  # Several malformed routes in one bucket (den-hoag-in23c): every reader traverses the bucket's
+  # checked memo in list order, so the first malformed route refuses, and within one route the
+  # declared-key check runs before `checkRoute`. Every source carries an `s` terminal.
+  good =
+    i:
+    route {
+      name = "g${toString i}";
+      order = [ i ];
+      from = s "p${toString i}";
+    };
+  badOrder = (good 1) // {
+    order = "late";
+  };
+  badFrom = (good 2) // {
+    from = (s "nowhere") // {
+      select = "declared";
+    };
+  };
+  badKey = (good 3) // {
+    colour = "red";
+  };
+  badKeyOrder = (good 4) // {
+    colour = "red";
+    order = "late";
+  };
+  tgt = node: {
+    ${node}.c = [
+      [
+        "own"
+        (own node)
+      ]
+    ];
+  };
+  srcs = lib.genAttrs [ "p0" "p1" "p2" "p3" "p4" ] (p: {
+    s = [
+      [
+        "o${p}"
+        (t "X${p}")
+      ]
+    ];
+  });
+  bucket =
+    rs:
+    run {
+      cells = tgt "t0" // srcs;
+      routes.c.t0 = [ (good 0) ] ++ rs;
+      extraTerminals.s = _: null;
+    };
+  orderText = "${pre}: route into c.t0: p1/g1 must carry `order`, its declaration order, as a list of non-negative ints (the resolver supplies it)";
+
   un = name: status: required: {
     inherit name status required;
     producer = "damask";
@@ -424,6 +474,77 @@ in
           extraTerminals = xT;
         }).check;
       expectedError.msg = exactly "${pre}: check: 1 route(s) fail: target c.pewter refuses its forwarded content (read the target for the reason)";
+    };
+
+    # ── several malformed routes: the first in list order refuses, the key check first within one
+    # (den-hoag-in23c). RED: the memo without `checkRoute` (an evaluator error), or each bucket
+    # reversed (the later route refuses). ──
+    test-forward-bucket-first-malformed-route-refuses-bad-order-first = {
+      expr =
+        (bucket [
+          badOrder
+          badFrom
+        ]).realized.c.t0;
+      expectedError.msg = exactly orderText;
+    };
+    test-forward-bucket-first-malformed-route-refuses-bad-from-first = {
+      expr =
+        (bucket [
+          badFrom
+          badOrder
+        ]).realized.c.t0;
+      expectedError.msg = exactly "${pre}: route into c.t0: p2/g2 selects from node nowhere, which the projection does not carry";
+    };
+    test-forward-bucket-route-check-refuses-before-a-later-key-refusal = {
+      expr =
+        (bucket [
+          badOrder
+          badKey
+        ]).check;
+      expectedError.msg = exactly orderText;
+    };
+    test-forward-bucket-key-check-refuses-before-the-route-check = {
+      expr = (bucket [ badKeyOrder ]).realized.c.t0;
+      expectedError.msg = exactly (
+        prelude.refusals.unknownOption "${pre}: route into c.t0: p4/g4" [
+          "from"
+          "name"
+          "order"
+          "producer"
+          "recipe"
+          "required"
+          "site"
+        ] "colour"
+      );
+    };
+    test-forward-bucket-malformed-route-in-a-relayed-bucket-refuses-the-far-target = {
+      expr =
+        (run {
+          cells = tgt "t0" // tgt "t1" // tgt "t2" // srcs;
+          routes.c = {
+            t1 = [
+              (route {
+                name = "h0";
+                order = [ 0 ];
+                from = c "t0";
+                select = "cell";
+                path = [ ];
+              })
+              badOrder
+            ];
+            t2 = [
+              (route {
+                name = "h1";
+                order = [ 0 ];
+                from = c "t1";
+                select = "cell";
+                path = [ ];
+              })
+            ];
+          };
+          extraTerminals.s = _: null;
+        }).realized.c.t2;
+      expectedError.msg = exactly "${pre}: route into c.t1: p1/g1 must carry `order`, its declaration order, as a list of non-negative ints (the resolver supplies it)";
     };
   };
 }

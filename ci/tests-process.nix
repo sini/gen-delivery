@@ -157,25 +157,28 @@
             prev=$n pe=$e pf=$f
           done
 
-          # den-hoag-lrnaw: `forward`'s declared-key check runs once per route, so it adds no per-route
-          # cost that grows with the bucket width. Placed per `checkRoute` application it read quadratic,
-          # in thunks with a `from` check and in bytes with the route check alone. Thunks are bounded per
-          # route over k = 1..16 and 16..64, bytes over 16..64 (Determinate allocates in blocks too coarse
-          # for 1..16), each bound measured on all three evaluators. The route cost's quadratic term
-          # predates the check (den-hoag-in23c), so a lower count only ever passes.
+          # den-hoag-lrnaw, den-hoag-in23c: every route check runs once per route, in its bucket's memo,
+          # so `forward` costs the same per route however wide the bucket. Checked per read it read
+          # quadratic (16844 thunks per route over 16..64). Thunks are bounded per route by one flat
+          # ceiling on both segments, 1..16 and 16..64 (the `fleet-per-host` form); bytes over 16..64 only
+          # (Determinate allocates in blocks too coarse for 1..16), each bound measured on all three
+          # evaluators. The k = 64 endpoint sits on a one-time step at k = 63 -> 64 (about +8700 thunks,
+          # present before the memo too): it is part of 16..64's figure, not a slope to chase. Determinate's
+          # byte bound leaves two 262144 B blocks over its figure, since its per-route bytes move by a
+          # block between neighbouring k.
           at width 1 1; wt1=$thunks wb1=$bytes
           at width 16 16; wt16=$thunks wb16=$bytes
           at width 64 64; wt64=$thunks wb64=$bytes
           ta=$(((wt16 - wt1) / 15)) tb=$(((wt64 - wt16) / 48)) bb=$(((wb64 - wb16) / 48))
           echo "forward-width: $ta / $tb thunks per route over k = 1..16 / 16..64, $bb bytes over 16..64 ($wt1 / $wt16 / $wt64 thunks)"
           [ "$ta" -gt 0 ] && [ "$bb" -gt 0 ] || die forward-width "could not measure: no cost per route ($wt1 / $wt16 thunks, $wb16 / $wb64 bytes)"
-          [ "$ta" -le 4700 ] && [ "$tb" -le 17200 ] \
+          [ "$ta" -le 1400 ] && [ "$tb" -le 1400 ] \
             || die forward-width "a route costs more thunks as the bucket widens than bounded: $ta / $tb over k = 1..16 / 16..64"
           # Bytes per route differ by evaluator family as much as the defect does, so each has its own.
           case "$(nix-instantiate --version)" in
-            *Lix*) bmax=740000 ;;
-            *Determinate*) bmax=617000 ;;
-            *) bmax=647000 ;;
+            *Lix*) bmax=109500 ;;
+            *Determinate*) bmax=85000 ;;
+            *) bmax=101000 ;;
           esac
           [ "$bb" -le "$bmax" ] \
             || die forward-width "a route costs more bytes as the bucket widens than bounded: $bb over k = 16..64, bound $bmax"
