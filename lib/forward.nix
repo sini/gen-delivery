@@ -838,7 +838,41 @@ let
             }
           ) (builtins.tail (closureKeys c n));
         in
-        length (attrNames (listToAttrs fs)) == length fs;
+        length (attrNames (listToAttrs fs)) == length fs
+        # Only on a collision: states that are twins in one holding cell count once, so a twin merge (one
+        # source cell selected alike by two routes of a bucket) reads as a tree.
+        || (
+          let
+            ks = builtins.tail (closureKeys c n);
+            fs = map (
+              k:
+              let
+                x = stateOf k;
+              in
+              {
+                name = "${x.c}\n${x.n}\n${twinSig x.r}\n${x.rk or ""}";
+                value = "${x.r.from.class}\n${x.r.from.node}";
+              }
+            ) ks;
+            vs = builtins.attrValues (listToAttrs fs);
+          in
+          length (
+            attrNames (
+              listToAttrs (
+                map (v: {
+                  name = v;
+                  value = null;
+                }) vs
+              )
+            )
+          ) == length vs
+        );
+      # A route's twin signature: its source cell, its select kind and, for an occurrence route, the key.
+      twinSig =
+        r:
+        "${r.from.class}\n${r.from.node}\n${selKind r}\n${
+          if selKind r == "occurrence" then refKey r else ""
+        }";
       # Placement reads an occurrence only through `captured`, its origin's bindings, and only a W1 route
       # carries occurrences of more than one origin: a W1 route that reads `captured` (or a `ref` that may
       # resolve there) places its occurrences apart; every other route has one path for all it carries.
@@ -851,6 +885,19 @@ let
           in
           !t.success || t.value
         );
+      # The twin index, a per-bucket memo beside `itemMemo` and `indexMemo`: the bucket's routes grouped by
+      # `twinSig` in declared order, and each group of two or more named by its first in the assembled order
+      # (a singleton group holds null). `itemsAt` reads it only in a bucket of two or more routes, so a class
+      # whose buckets each hold one route never forces it, and a bucket without twins never sorts.
+      twinMemo = mapAttrs (
+        c: per:
+        mapAttrs (
+          n: _:
+          mapAttrs (_: g: if builtins.tail g == [ ] then null else head (sortBy (r: r.order) g)) (
+            groupBy twinSig (map (x: x.r) (itemsOf c n))
+          )
+        ) per
+      ) routes;
       itemsMemo = mapAttrs (c: per: mapAttrs (n: _: itemsAt c n) per) routes;
       itemsOfCell = c: n: (itemsMemo.${c} or { }).${n} or [ ];
       # A route with an empty placement adds no chunk, so its source's items stand at this level: the
@@ -921,8 +968,17 @@ let
           )
         else
           its;
+      # Twins: two routes of one bucket with one `twinSig` select the same occurrences with the same
+      # sub-chunks. The first in the assembled order carries them; each later twin that carries something
+      # contributes one check item (`chk`): the probe forces it, and every reader of an item's occurrence
+      # drops it. Its placement must resolve the first's path, and neither may place apart, or the read
+      # falls back to `received`, which refuses in its own order. The bucket-width test is an operator over
+      # a direct call, `tail rs != [ ]`, never `length rs < 2`, whose primop arguments allocate per route.
       itemsAt =
         c: n:
+        let
+          rs = assembled c n;
+        in
         concatMap (
           r:
           let
@@ -939,6 +995,29 @@ let
           in
           if up == [ ] && own == [ ] then
             [ ]
+          else if
+            builtins.tail rs != [ ]
+            && twinMemo.${c}.${n}.${twinSig r} != null
+            && (
+              twinMemo.${c}.${n}.${twinSig r}.producer != r.producer
+              || twinMemo.${c}.${n}.${twinSig r}.name != r.name
+            )
+          then
+            [
+              {
+                chk =
+                  let
+                    r0 = twinMemo.${c}.${n}.${twinSig r};
+                    a = if k == "cell" then { captured = { }; } else (head own).occ;
+                  in
+                  if placesApart r || placesApart r0 then
+                    throw "${pre}: shared carriage: twin ${rName r} places its occurrences apart"
+                  else if pathOf c n r a == pathOf c n r0 a then
+                    null
+                  else
+                    throw "${pre}: shared carriage: twin ${rName r} resolves another path than ${rName r0}";
+              }
+            ]
           else if r.recipe.importsAt == [ ] then
             (
               if up == [ ] then
@@ -973,7 +1052,7 @@ let
                     };
               }
             ]
-        ) (assembled c n);
+        ) rs;
       # The probe, once per cell: this cell's own reads (its bucket, each carrying route's placement, the
       # keys of what it selects afresh), then the probe of every cell whose items it holds.
       probeMemo = mapAttrs (c: per: mapAttrs (n: _: probeAt c n) per) routes;
@@ -991,6 +1070,8 @@ let
                 it.path
                 (map (o: o.occ.key) it.own)
               ]
+            else if it ? chk then
+              it.chk
             else
               it.occ.key
           ) its;
@@ -1005,7 +1086,28 @@ let
           ) its;
         in
         (tryEval (builtins.deepSeq local true)).success && all (x: probeOk x.c x.n) srcs;
-      sharedOk = c: n: treeShaped c n && probeOk c n;
+      sharedOk = c: n: (treeShaped c n || flatPlaced c n) && probeOk c n;
+      # Every state of the closure places at importsAt [ ]: every arrival's chunk list is empty, so settle's
+      # conflict filter is vacuous and settle is first occurrence by key, which levelItems performs.
+      flatPlaced =
+        c: n:
+        all (
+          k:
+          let
+            t = tryEval ((stateOf k).r.recipe.importsAt == [ ]);
+          in
+          t.success && t.value
+        ) (builtins.tail (closureKeys c n));
+      # The splice DAG in pre-order, each spliced cell expanded once (a revisit's items all stood earlier).
+      flattenDag =
+        its:
+        filter (it: !(it ? splice) && !(it ? chk)) (
+          (graph.expandPreorder { } {
+            roots = its;
+            key = it: if it ? splice then "${it.c}\n${it.n}" else null;
+            edges = it: if it ? splice then itemsOfCell it.c it.n else [ ];
+          }).nodes
+        );
       innerItems =
         its:
         concatMap (
@@ -1016,6 +1118,8 @@ let
                 imports = innerItems it.body;
               }))
             ]
+          else if it ? chk then
+            [ ]
           else
             it.occ.group
         ) (flatten its);
@@ -1023,7 +1127,14 @@ let
         its0:
         let
           its = flatten its0;
-          tag = it: if it ? h then "p" + toJSON it.path else "o" + it.occ.key;
+          tag =
+            it:
+            if it ? h then
+              "p" + toJSON it.path
+            else if it ? chk then
+              "c"
+            else
+              "o" + it.occ.key;
           tags = uniqueOrdered (map tag its);
           byT = groupBy tag its;
         in
@@ -1039,6 +1150,8 @@ let
                 imports = concatMap (it: innerItems it.body) g;
               }))
             ]
+          else if d0 ? chk then
+            [ ]
           else
             d0.occ.group
         ) tags;
@@ -1086,8 +1199,10 @@ let
         c: n:
         if hasCycle c n then
           throw "${pre}: target ${at c n} is affected by a forwarding cycle: ${concatStringsSep "; " (cyclicIn c n)} lie on a cycle, and the target receives what they carry"
-        else if sharedOk c n then
-          levelItems (itemsOfCell c n)
+        else if treeShaped c n then
+          (if probeOk c n then levelItems (itemsOfCell c n) else level (received c n))
+        else if flatPlaced c n && probeOk c n then
+          levelItems (flattenDag (itemsOfCell c n))
         else
           level (received c n);
       wrapper = c: n: _: { imports = forwardedModules c n; };

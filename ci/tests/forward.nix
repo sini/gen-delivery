@@ -1503,6 +1503,70 @@ let
       ];
       extraTerminals = xT;
     };
+
+  # ── merge points through distinct relay cells (den-hoag-wk4in): a diamond per level, t(i) -> x(i),
+  # y(i) -> t(i+1), every route W1 at the root, so the read takes the flat merge walk. ──
+  ownCell = n: {
+    c = [
+      [
+        "own"
+        (own n)
+      ]
+    ];
+  };
+  w1 =
+    name: order: from:
+    route {
+      inherit name;
+      order = [ order ];
+      from = c from;
+      select = "cell";
+      path = [ ];
+    };
+  dagCells =
+    d:
+    lib.genAttrs (
+      map (i: "t${toString i}") (lib.range 0 d)
+      ++ lib.concatMap (i: [
+        "x${toString i}"
+        "y${toString i}"
+      ]) (lib.range 0 (d - 1))
+    ) ownCell;
+  # `swap` declares the y branch before the x branch at every merge.
+  dagRoutes =
+    d: swap:
+    lib.listToAttrs (
+      lib.concatMap (
+        i:
+        let
+          si = toString i;
+        in
+        [
+          (lib.nameValuePair "x${si}" [ (w1 "x${si}" 0 "t${si}") ])
+          (lib.nameValuePair "y${si}" [ (w1 "y${si}" 0 "t${si}") ])
+          (lib.nameValuePair "t${toString (i + 1)}" [
+            (w1 "a${si}" (if swap then 1 else 0) "x${si}")
+            (w1 "b${si}" (if swap then 0 else 1) "y${si}")
+          ])
+        ]
+      ) (lib.range 0 (d - 1))
+    );
+  dagRun =
+    cells: routes:
+    run {
+      inherit cells;
+      routes.c = routes;
+      extraTerminals.s = _: null;
+    };
+  # The cell names a target's wrapper delivers, in its imports' order, each module applied.
+  wrapperNames =
+    r: n:
+    let
+      cs = r.projected.nodes.${n}.classes.c;
+      applied = m: if builtins.isFunction m then applied (m { }) else m;
+    in
+    map (m: builtins.head (builtins.attrNames (applied m).spools))
+      ((builtins.elemAt cs (builtins.length cs - 1)) { }).imports;
 in
 {
   flake.tests.forward = {
@@ -2274,6 +2338,75 @@ in
         check = false;
         velour = true;
       };
+    };
+
+    # ── merge points (den-hoag-wk4in): the flat merge walk delivers `received`'s first-occurrence order ──
+    # t0 -> x0, y0, z0 -> t1 -> x1, y1 -> t2. RED: the walk taking a splice's items in reverse reads
+    # [ t1 z0 t0 y0 x0 x1 y1 ].
+    test-forward-merge-through-distinct-relays-keeps-first-occurrence-order = {
+      expr = wrapperNames (dagRun (dagCells 2 // { z0 = ownCell "z0"; }) (
+        let
+          rs = dagRoutes 2 false;
+        in
+        rs
+        // {
+          z0 = [ (w1 "z0" 0 "t0") ];
+          t1 = rs.t1 ++ [ (w1 "c0" 2 "z0") ];
+        }
+      )) "t2";
+      expected = [
+        "t0"
+        "x0"
+        "y0"
+        "z0"
+        "t1"
+        "x1"
+        "y1"
+      ];
+    };
+    # The y branch declared first at every merge, three levels: the walk follows the declared order.
+    test-forward-merge-swap-follows-declared-order = {
+      expr = wrapperNames (dagRun (dagCells 3) (dagRoutes 3 true)) "t3";
+      expected = [
+        "t0"
+        "y0"
+        "x0"
+        "t1"
+        "y1"
+        "x1"
+        "t2"
+        "y2"
+        "x2"
+      ];
+    };
+    # A route that carries nothing (from an empty cell) beside the merge, its placement aborting if a
+    # segment is read: the flat-merge test reads only the placement's spine. RED: a test that forces the
+    # segments aborts with 'lazy-dag-empty-route'.
+    test-forward-flat-merge-test-never-forces-a-placement-segment = {
+      expr = wrapperNames (dagRun (dagCells 2 // { e.s = [ ]; }) (
+        let
+          rs = dagRoutes 2 false;
+        in
+        rs
+        // {
+          t2 = rs.t2 ++ [
+            (route {
+              name = "ge";
+              order = [ 2 ];
+              from = s "e";
+              path = [ (abort "lazy-dag-empty-route") ];
+            })
+          ];
+        }
+      )) "t2";
+      expected = [
+        "t0"
+        "x0"
+        "y0"
+        "t1"
+        "x1"
+        "y1"
+      ];
     };
   };
 }

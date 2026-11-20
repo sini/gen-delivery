@@ -192,6 +192,122 @@ let
         };
       in
       builtins.deepSeq r.realized.c.${tn d} d;
+    # den-hoag-wk4in: `forward`'s merge depth, the twin ladder l0 .. ld, each l(i+1) with TWO W1 routes from
+    # l(i) at the root (producers a and b), its deepest target alone realized; its value is the depth.
+    ladder =
+      let
+        d = builtins.fromJSON n;
+        fx = import forwardFixtureSrc {
+          inherit genDelivery;
+          lib = import "${nixpkgsSrc}/lib";
+        };
+        ln = i: "l${toString i}";
+        ix = builtins.genList (i: i) d;
+        hop =
+          p: o: i:
+          fx.route {
+            name = "${p}${toString i}";
+            producer = p;
+            order = [ o ];
+            from = {
+              class = "c";
+              node = ln i;
+            };
+            select = "cell";
+            path = [ ];
+          };
+        r = fx.run {
+          cells = builtins.listToAttrs (
+            map (i: {
+              name = ln i;
+              value.c = [
+                [
+                  "own"
+                  (fx.own (ln i))
+                ]
+              ];
+            }) (ix ++ [ d ])
+          );
+          routes.c = builtins.listToAttrs (
+            map (i: {
+              name = ln (i + 1);
+              value = [
+                (hop "a" 0 i)
+                (hop "b" 1 i)
+              ];
+            }) ix
+          );
+        };
+      in
+      builtins.deepSeq r.realized.c.${ln d} d;
+    # den-hoag-wk4in: a merge through DISTINCT relay cells per level, l(i) -> x(i), y(i) -> l(i+1), every
+    # route W1 at the root, its deepest target alone realized; its value is the depth.
+    mergeDepth =
+      let
+        d = builtins.fromJSON n;
+        fx = import forwardFixtureSrc {
+          inherit genDelivery;
+          lib = import "${nixpkgsSrc}/lib";
+        };
+        ln = i: "l${toString i}";
+        ix = builtins.genList (i: i) d;
+        w1 =
+          name: o: from:
+          fx.route {
+            inherit name;
+            order = [ o ];
+            from = {
+              class = "c";
+              node = from;
+            };
+            select = "cell";
+            path = [ ];
+          };
+        own = t: {
+          name = t;
+          value.c = [
+            [
+              "own"
+              (fx.own t)
+            ]
+          ];
+        };
+        r = fx.run {
+          cells = builtins.listToAttrs (
+            map (i: own (ln i)) (ix ++ [ d ])
+            ++ builtins.concatMap (i: [
+              (own "x${toString i}")
+              (own "y${toString i}")
+            ]) ix
+          );
+          routes.c = builtins.listToAttrs (
+            builtins.concatMap (
+              i:
+              let
+                si = toString i;
+              in
+              [
+                {
+                  name = "x${si}";
+                  value = [ (w1 "x${si}" 0 (ln i)) ];
+                }
+                {
+                  name = "y${si}";
+                  value = [ (w1 "y${si}" 0 (ln i)) ];
+                }
+                {
+                  name = ln (i + 1);
+                  value = [
+                    (w1 "a${si}" 0 "x${si}")
+                    (w1 "b${si}" 1 "y${si}")
+                  ];
+                }
+              ]
+            ) ix
+          );
+        };
+      in
+      builtins.deepSeq r.realized.c.${ln d} d;
   };
   hostsIn = m: builtins.deepSeq m (builtins.length (builtins.attrNames m));
 in

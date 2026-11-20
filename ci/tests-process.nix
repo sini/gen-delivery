@@ -227,9 +227,64 @@
               ;;
           esac
 
+          # den-hoag-wk4in: a merge point carries its sources by reference too, so a target's read costs the same
+          # per level however deep the merges (first slice section 2.10 keeps the claim for merge points). Two
+          # classes, each re-materialising the received set per route per level before: twins (two routes
+          # selecting one cell alike, the tree test read them as shared) read 2941 / 4127 thunks per level over
+          # 16..32 / 32..64 on Nix, and a merge through distinct relay cells 12570 / 21426. Thunks are bounded
+          # per level by one flat ceiling on both segments; bytes over 32..64, per evaluator family, each bound
+          # measured on all three evaluators.
+          at ladder 1 1; lt1=$thunks
+          at ladder 16 16; lt16=$thunks
+          at ladder 32 32; lt32=$thunks lb32=$bytes
+          at ladder 64 64; lt64=$thunks lb64=$bytes
+          la=$(((lt32 - lt16) / 16)) lc=$(((lt64 - lt32) / 32)) lbb=$(((lb64 - lb32) / 32))
+          echo "forward-ladder: $la / $lc thunks per level over d = 16..32 / 32..64, $lbb bytes over 32..64 ($lt1 / $lt16 / $lt32 / $lt64 thunks)"
+          [ "$la" -gt 0 ] && [ "$lbb" -gt 0 ] || die forward-ladder "could not measure: no cost per level ($lt16 / $lt32 thunks, $lb32 / $lb64 bytes)"
+          [ "$la" -le 2000 ] && [ "$lc" -le 2000 ] \
+            || die forward-ladder "a twin merge level costs more thunks as the ladder deepens than bounded: $la / $lc over d = 16..32 / 32..64"
+          case "$(nix-instantiate --version)" in
+            *Lix*) lbmax=140000 ;;
+            *Determinate*) lbmax=130000 ;;
+            *) lbmax=135000 ;;
+          esac
+          [ "$lbb" -le "$lbmax" ] \
+            || die forward-ladder "a twin merge level costs more bytes as the ladder deepens than bounded: $lbb over d = 32..64, bound $lbmax"
+          # Growth, as forward-depth's: bytes per level at d = 512..1024 within 15% of 32..64. A carriage that
+          # copies the source's items into each twin (thunk-lighter than the reference) reads 1.270 / 1.266 on
+          # Nix / Lix against 1.072 / 1.073. Not read on Determinate (its block allocator; 0.918 reference).
+          at ladder 512 512; lb512=$bytes
+          at ladder 1024 1024; lb1024=$bytes
+          lbg=$(((lb1024 - lb512) / 512))
+          echo "forward-ladder-growth: $lbg bytes per level over d = 512..1024, $lbb over 32..64"
+          [ "$lbg" -gt 0 ] || die forward-ladder "could not measure: no bytes per level over d = 512..1024 ($lb512 / $lb1024)"
+          case "$(nix-instantiate --version)" in
+            *Determinate*) ;;
+            *)
+              [ $((lbg * 100)) -le $((lbb * 115)) ] \
+                || die forward-ladder "a twin merge level's bytes grow with the ladder's depth: $lbg over d = 512..1024 against $lbb over 32..64, more than 15%"
+              ;;
+          esac
+          at mergeDepth 1 1; mt1=$thunks
+          at mergeDepth 16 16; mt16=$thunks
+          at mergeDepth 32 32; mt32=$thunks mb32=$bytes
+          at mergeDepth 64 64; mt64=$thunks mb64=$bytes
+          ma=$(((mt32 - mt16) / 16)) mc=$(((mt64 - mt32) / 32)) mbb=$(((mb64 - mb32) / 32))
+          echo "forward-merge-depth: $ma / $mc thunks per level over d = 16..32 / 32..64, $mbb bytes over 32..64 ($mt1 / $mt16 / $mt32 / $mt64 thunks)"
+          [ "$ma" -gt 0 ] && [ "$mbb" -gt 0 ] || die forward-merge-depth "could not measure: no cost per level ($mt16 / $mt32 thunks, $mb32 / $mb64 bytes)"
+          [ "$ma" -le 5000 ] && [ "$mc" -le 5000 ] \
+            || die forward-merge-depth "a distinct-cell merge level costs more thunks as the merges deepen than bounded: $ma / $mc over d = 16..32 / 32..64"
+          case "$(nix-instantiate --version)" in
+            *Lix*) mbmax=350000 ;;
+            *Determinate*) mbmax=260000 ;;
+            *) mbmax=340000 ;;
+          esac
+          [ "$mbb" -le "$mbmax" ] \
+            || die forward-merge-depth "a distinct-cell merge level costs more bytes as the merges deepen than bounded: $mbb over d = 32..64, bound $mbmax"
+
           # 0/0 is a false pass: the runner must have executed every evaluation above.
-          [ "$ran" = "27" ] || die runner "expected 27 evaluations, ran $ran"
-          echo "tests-process: 7 cells, every exit read unpiped, every count read" > $out
+          [ "$ran" = "37" ] || die runner "expected 37 evaluations, ran $ran"
+          echo "tests-process: 9 cells, every exit read unpiped, every count read" > $out
         ''
         + ''
           cat "$out"
