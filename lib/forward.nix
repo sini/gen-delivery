@@ -239,6 +239,24 @@ let
           )
         ) per
       ) routes;
+      # The checked states of a bucket in its declared order (`assembled`'s), sorted once per bucket and
+      # shared: `assembled` reads its routes off it, and the delivery graph walks each bucket in it, so the
+      # lowlink run that orders the fill visits a cell's sources as the recursive read does. Each route is
+      # checked in list order first, so a malformed route refuses as it did unsorted.
+      sortedMemo = mapAttrs (
+        c: per:
+        mapAttrs (
+          n: _:
+          let
+            xs = itemsOf c n;
+          in
+          if xs == [ ] || builtins.tail xs == [ ] then
+            xs
+          else
+            builtins.seq (foldl' (a: x: builtins.seq x.r a) true xs) (sortBy (x: x.r.order) xs)
+        ) per
+      ) routes;
+      sortedOf = c: n: (sortedMemo.${c} or { }).${n} or [ ];
 
       # The `select` shapes a route may carry: "cell", "declared" or { occurrence = { class; id; node; }; }.
       selShapeOk =
@@ -475,18 +493,10 @@ let
             mapAttrs (
               n: _:
               listToAttrs (
-                map (
-                  k:
-                  let
-                    s = succK k;
-                  in
-                  {
-                    name = k;
-                    # In the bucket's declared order (`assembled`'s), so the walk visits sources as the
-                    # read does; the cyclic set does not depend on it.
-                    value = keysOf (if s == [ ] || builtins.tail s == [ ] then s else sortBy (y: y.r.order) s);
-                  }
-                ) (closureKeys c n)
+                map (k: {
+                  name = k;
+                  value = keysOf (succK k);
+                }) (closureKeys c n)
               )
             ) per
           ) routes;
@@ -526,7 +536,10 @@ let
             hasCycle
             ;
         };
-      checked = graphOver { inherit itemsOf indexMemo; };
+      checked = graphOver {
+        itemsOf = sortedOf;
+        inherit indexMemo;
+      };
       inherit (checked)
         stateOf
         kindOf
@@ -621,7 +634,7 @@ let
             ]
           ) rs;
           dups = filter (k: length byR.${k} > 1) (attrNames byR);
-          sorted = sortBy (r: r.order) rs;
+          sorted = map (x: x.r) (sortedOf c n);
           ties =
             if length sorted < 2 then
               [ ]
@@ -889,7 +902,7 @@ let
       # any refusal there sends the read to `received`, which raises it in its own order.
       # One attribute per closure state, named by its source cell: fewer names than states is two states
       # selecting from one cell. A name collision can only read a tree as shared, which falls back.
-      # The closure's states, decoded once per target and shared by the tree test's two counts.
+      # The closure's states, decoded once per target and shared by the tree test's two counts and the fill.
       statesMemo = mapAttrs (
         c: per: mapAttrs (n: _: map stateOf (builtins.tail (closureKeys c n))) per
       ) routes;
@@ -1170,15 +1183,13 @@ let
         foldl' (
           acc: x:
           let
-            fc = x.r.from.class;
-            fn = x.r.from.node;
             kd = kindOf x;
           in
           if kd == "declared" then
             acc
           else if kd == "occurrence" then
             (
-              if declaresKey fc fn (refKey x.r) then
+              if declaresKey x.r.from.class x.r.from.node (refKey x.r) then
                 acc
               else
                 builtins.seq selMemo.${x.c}.${x.n}.${"${x.r.producer}\n${x.r.name}"} acc
@@ -1186,17 +1197,28 @@ let
           else if x ? rk then
             acc
           else
-            builtins.seq (cellStep fc fn) acc
+            builtins.seq (cellStep x.r.from.class x.r.from.node) acc
         ) true (fillOrder c n);
       # Sources first: the closure's states in the order gen-graph's lowlink run pops them, the run
       # `cyclicKeys` already makes (`cycleOf`). On an acyclic closure every component is one state, and
       # Tarjan pops a state after every state it reaches, so each finds its sources already forced. The
       # run starts at the target and visits each state's sources in the bucket's declared order
-      # (`edgesIn`), so the first refusing entry is the one the recursive read reaches first. Only an
+      # (`sortedOf`), so the first refusing entry is the one the recursive read reaches first. Only an
       # acyclic closure is read here.
+      # The run starts at the target's root, which every other state's component is reached from, so the
+      # root is popped last and is dropped; each popped key is read off the states the tree test decoded.
       fillOrder =
         c: n:
-        map stateOf (filter (k: k != rootKey c n) (builtins.concatLists (cycleOf c n).popped));
+        let
+          ks = (cycleOf c n).popped;
+          sx = listToAttrs (
+            map (x: {
+              name = x.key;
+              value = x;
+            }) (statesOf c n)
+          );
+        in
+        map (k: sx.${k}) (builtins.genList (builtins.elemAt ks) (length ks - 1));
       probed = c: n: builtins.seq (fill probeOk c n) (probeOk c n);
       receivedFilled = c: n: builtins.seq (fill received c n) (received c n);
       # Every state of the closure places at importsAt [ ]: every arrival's chunk list is empty, so settle's
