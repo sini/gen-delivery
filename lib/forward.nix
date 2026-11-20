@@ -1158,8 +1158,11 @@ let
       # Sources first. In a tree-shaped closure each source cell is selected by one state (or twins in one
       # holding cell, discovered together), so every state's successors are discovered after it and the
       # closure's own order, reversed, is topological. Elsewhere a later-discovered state can select from a
-      # cell an earlier one reached first (a relay with shortcuts); where it does, the order is gen-graph's
-      # Kahn arm, the driver `coneRank` warms with. Only an acyclic closure is read here.
+      # cell an earlier one reached first (a relay with shortcuts); where it does, the order is the
+      # closure's depth-first post-order, read off gen-graph's `expandPreorder` walk (the visited set is
+      # gen-graph's, as `flattenDag`'s): each state's frame is followed by an exit frame after its
+      # successors, so the exits stand in post-order, every state after its successors. Only an acyclic
+      # closure is read here.
       fillOrder =
         c: n:
         let
@@ -1177,11 +1180,34 @@ let
         if treeShaped c n || inOrder then
           reverse xs
         else
-          map stateOf
-            (graph.topoOrderKahn { } {
-              nodes = builtins.tail (closureKeys c n);
-              edges = edgesIn c n;
-            }).order;
+          map (f: stateOf f.k) (
+            filter (f: f.exit && f.k != rootKey c n) (
+              (graph.expandPreorder { } {
+                roots = [
+                  {
+                    k = rootKey c n;
+                    exit = false;
+                  }
+                ];
+                key = f: if f.exit then null else f.k;
+                edges =
+                  f:
+                  if f.exit then
+                    [ ]
+                  else
+                    map (k: {
+                      inherit k;
+                      exit = false;
+                    }) (edgesIn c n f.k)
+                    ++ [
+                      {
+                        inherit (f) k;
+                        exit = true;
+                      }
+                    ];
+              }).nodes
+            )
+          );
       probed = c: n: builtins.seq (fill probeOk c n) (probeOk c n);
       receivedFilled = c: n: builtins.seq (fill received c n) (received c n);
       # Every state of the closure places at importsAt [ ]: every arrival's chunk list is empty, so settle's
