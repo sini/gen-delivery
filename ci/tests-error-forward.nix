@@ -177,6 +177,48 @@ let
       extraTerminals.s = _: null;
     };
   orderText = "${pre}: route into c.t0: p1/g1 must carry `order`, its declaration order, as a list of non-negative ints (the resolver supplies it)";
+  # g3p6r / ovt5a: only p0 and p1 carry `s` content, and `s` has no terminal.
+  srcs2 = lib.genAttrs [ "p0" "p1" ] (p: {
+    s = [
+      [
+        "o${p}"
+        (t "X${p}")
+      ]
+    ];
+  });
+  dropped = run {
+    cells = tgt "t0" // tgt "t1" // srcs2;
+    routes.c = {
+      t0 = [ (good 0) ];
+      t1 = [ ((good 1) // { from = "p1"; }) ];
+    };
+  };
+  cycleBeside = run {
+    cells = tgt "t0" // tgt "t1" // tgt "t3" // tgt "t4" // srcs;
+    routes.c = {
+      t0 = [ (good 0) ];
+      t1 = [ badOrder ];
+      t3 = [
+        (route {
+          name = "y3";
+          order = [ 0 ];
+          from = c "t4";
+          select = "cell";
+          path = [ ];
+        })
+      ];
+      t4 = [
+        (route {
+          name = "y4";
+          order = [ 0 ];
+          from = c "t3";
+          select = "cell";
+          path = [ ];
+        })
+      ];
+    };
+    extraTerminals.s = _: null;
+  };
 
   un = name: status: required: {
     inherit name status required;
@@ -500,8 +542,24 @@ in
         (bucket [
           badOrder
           badKey
-        ]).check;
+        ]).realized.c.t0;
       expectedError.msg = exactly orderText;
+    };
+    test-forward-check-names-the-target-of-a-malformed-route = {
+      expr =
+        (bucket [
+          badOrder
+          badKey
+        ]).check;
+      expectedError.msg = exactly "${pre}: check: 1 route(s) fail: target c.t0 refuses its forwarded content (read the target for the reason)";
+    };
+    test-forward-unplaceable-route-refuses-by-its-own-text-where-its-content-is-left = {
+      expr = dropped.realized.c.t0;
+      expectedError.msg = exactly "${pre}: route into c.t1: p1/g1 must carry `from = { class; node; select; }`";
+    };
+    test-forward-check-lists-a-cycle-beside-a-malformed-route = {
+      expr = cycleBeside.check;
+      expectedError.msg = exactly "${pre}: check: 3 route(s) fail: t4/y3 into c.t3 (on a forwarding cycle); t3/y4 into c.t4 (on a forwarding cycle); target c.t1 refuses its forwarded content (read the target for the reason)";
     };
     test-forward-bucket-key-check-refuses-before-the-route-check = {
       expr = (bucket [ badKeyOrder ]).realized.c.t0;

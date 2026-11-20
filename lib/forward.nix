@@ -79,7 +79,9 @@
 # occurrences from it, and a received occurrence there is kept only when no route carries it on.
 # Whatever is left refuses through `realize`'s own content check, unchanged. Reading such a cell
 # inverts the destination table: it forces every route's `from` and `select` (structure), never a
-# group or a module.
+# group or a module, and never a route check. A route that names no carried (class, node) with a
+# well-formed `select` is UNPLACED: it consumes nothing, and its own check runs only in a stripping
+# that leaves declared content, the read `realize` refuses anyway, so it names a candidate cause.
 { prelude, graph }:
 let
   inherit (builtins)
@@ -238,6 +240,23 @@ let
         ) per
       ) routes;
 
+      # The `select` shapes a route may carry: "cell", "declared" or { occurrence = { class; id; node; }; }.
+      selShapeOk =
+        sel:
+        sel == "cell"
+        || sel == "declared"
+        || (
+          isAttrs sel
+          && attrNames sel == [ "occurrence" ]
+          && isAttrs sel.occurrence
+          &&
+            attrNames sel.occurrence == [
+              "class"
+              "id"
+              "node"
+            ]
+          && all isString (builtins.attrValues sel.occurrence)
+        );
       # ── ONE ROUTE, CHECKED ONCE, IN ITS BUCKET'S MEMO (`itemMemo`) ──
       checkRoute =
         c: n: r:
@@ -260,24 +279,7 @@ let
           bad "${rName r} must carry `from = { class; node; select; }`"
         else if !(nodes ? ${r.from.node}) then
           bad "${rName r} selects from node ${r.from.node}, which the projection does not carry"
-        else if
-          !(
-            sel == "cell"
-            || sel == "declared"
-            || (
-              isAttrs sel
-              && attrNames sel == [ "occurrence" ]
-              && isAttrs sel.occurrence
-              &&
-                attrNames sel.occurrence == [
-                  "class"
-                  "id"
-                  "node"
-                ]
-              && all isString (builtins.attrValues sel.occurrence)
-            )
-          )
-        then
+        else if !(selShapeOk sel) then
           bad "${rName r}: `from.select` is \"cell\" (W1, declared plus received), \"declared\" (W2) or { occurrence = { node; class; id; }; }"
         else if
           !(isAttrs (r.recipe or null))
@@ -391,79 +393,170 @@ let
           c
           n
         ];
-      stateOf =
-        key:
+      graphOver =
+        v:
         let
-          j = builtins.fromJSON key;
-          c = elemAt j 0;
-          n = elemAt j 1;
+          stateOf =
+            key:
+            let
+              j = builtins.fromJSON key;
+              c = elemAt j 0;
+              n = elemAt j 1;
+            in
+            if head j == "root" then
+              {
+                inherit key;
+                root = true;
+                c = elemAt j 1;
+                n = elemAt j 2;
+              }
+            else
+              let
+                x =
+                  v.indexMemo.${c}.${n}.${
+                    if length j == 5 then
+                      toJSON [
+                        c
+                        n
+                        (elemAt j 2)
+                        (elemAt j 3)
+                      ]
+                    else
+                      key
+                  };
+              in
+              if length j == 5 then tagK (elemAt j 4) x else x;
+          upstream = x: v.itemsOf x.r.from.class x.r.from.node;
+          kindOf = x: selKind x.r;
+          keysOf = map (x: x.key);
+          # The W1 routes upstream of `u`, `u` included: whatever reaches `u`'s target whole.
+          w1Succ =
+            key:
+            let
+              x = stateOf key;
+            in
+            if kindOf x == "cell" then upstream x else [ ];
+          w1Closure = u: [ u ] ++ map stateOf (graph.reachableVia w1Succ u.key);
+          # Does route `u` deliver occurrence `k` into its target? Read over `u`'s W1 closure.
+          deliversK =
+            u: k:
+            any (
+              w: if kindOf w == "occurrence" then refKey w.r == k else declaresKey w.r.from.class w.r.from.node k
+            ) (w1Closure u);
+          succ =
+            x:
+            if x ? root then
+              v.itemsOf x.c x.n
+            else if x ? rk then
+              if kindOf x == "declared" then [ ] else map (tagK x.rk) (filter (u: deliversK u x.rk) (upstream x))
+            else
+              let
+                k = kindOf x;
+              in
+              if k == "declared" then
+                [ ]
+              else if k == "cell" then
+                upstream x
+              else
+                map (tagK (refKey x.r)) (filter (u: deliversK u (refKey x.r)) (upstream x));
+          succK = key: succ (stateOf key);
+          # The target's closure as a closed accessor, and its cyclic states (gen-graph `cycles`).
+          closureKeys = c: n: [ (rootKey c n) ] ++ graph.reachableVia succK (rootKey c n);
+          cyclicKeys =
+            c: n:
+            graph.cycles {
+              nodes = closureKeys c n;
+              edges = key: keysOf (succK key);
+            };
+          hasCycle = c: n: cyclicKeys c n != [ ];
         in
-        if head j == "root" then
-          {
-            inherit key;
-            root = true;
-            c = elemAt j 1;
-            n = elemAt j 2;
-          }
-        else
-          let
-            x =
-              indexMemo.${c}.${n}.${
-                if length j == 5 then
-                  toJSON [
-                    c
-                    n
-                    (elemAt j 2)
-                    (elemAt j 3)
-                  ]
-                else
-                  key
-              };
-          in
-          if length j == 5 then tagK (elemAt j 4) x else x;
-      upstream = x: itemsOf x.r.from.class x.r.from.node;
-      kindOf = x: selKind x.r;
-      keysOf = map (x: x.key);
-      # The W1 routes upstream of `u`, `u` included: whatever reaches `u`'s target whole.
-      w1Succ =
-        key:
-        let
-          x = stateOf key;
-        in
-        if kindOf x == "cell" then upstream x else [ ];
-      w1Closure = u: [ u ] ++ map stateOf (graph.reachableVia w1Succ u.key);
-      # Does route `u` deliver occurrence `k` into its target? Read over `u`'s W1 closure.
-      deliversK =
-        u: k:
-        any (
-          w: if kindOf w == "occurrence" then refKey w.r == k else declaresKey w.r.from.class w.r.from.node k
-        ) (w1Closure u);
-      succ =
-        x:
-        if x ? root then
-          itemsOf x.c x.n
-        else if x ? rk then
-          if kindOf x == "declared" then [ ] else map (tagK x.rk) (filter (u: deliversK u x.rk) (upstream x))
-        else
-          let
-            k = kindOf x;
-          in
-          if k == "declared" then
-            [ ]
-          else if k == "cell" then
-            upstream x
-          else
-            map (tagK (refKey x.r)) (filter (u: deliversK u (refKey x.r)) (upstream x));
-      succK = key: succ (stateOf key);
-      # The target's closure as a closed accessor, and its cyclic states (gen-graph `cycles`).
-      closureKeys = c: n: [ (rootKey c n) ] ++ graph.reachableVia succK (rootKey c n);
-      cyclicKeys =
-        c: n:
-        graph.cycles {
-          nodes = closureKeys c n;
-          edges = key: keysOf (succK key);
+        {
+          inherit
+            stateOf
+            kindOf
+            keysOf
+            succK
+            deliversK
+            cyclicKeys
+            hasCycle
+            ;
         };
-      hasCycle = c: n: cyclicKeys c n != [ ];
+      checked = graphOver { inherit itemsOf indexMemo; };
+      inherit (checked)
+        stateOf
+        kindOf
+        keysOf
+        succK
+        deliversK
+        cyclicKeys
+        hasCycle
+        ;
+      # The WELL-FORMED view, for diagnostics only: a route whose own check refuses is not a state, so a
+      # malformed route hides no cycle and no diagnostic field throws (`refusing`'s tryEval, per route).
+      okMemo = mapAttrs (
+        c: per:
+        mapAttrs (
+          n: _:
+          let
+            t = tryEval (itemsOf c n);
+            whole = tryEval (foldl' (acc: x: builtins.seq x.r acc) true t.value);
+          in
+          if !t.success then
+            {
+              all = false;
+              xs = [ ];
+            }
+          else if whole.success then
+            {
+              all = true;
+              xs = t.value;
+            }
+          else
+            {
+              all = false;
+              xs = filter (x: (tryEval (builtins.seq x.r true)).success) t.value;
+            }
+        ) per
+      ) routes;
+      okOf =
+        c: n:
+        (okMemo.${c} or { }).${n} or {
+          all = true;
+          xs = [ ];
+        };
+      okItemsOf = c: n: (okOf c n).xs;
+      okIndexMemo = mapAttrs (
+        c: per:
+        mapAttrs (
+          n: _:
+          if (okOf c n).all then
+            indexMemo.${c}.${n}
+          else
+            listToAttrs (
+              map (x: {
+                name = x.key;
+                value = x;
+              }) (okItemsOf c n)
+            )
+        ) per
+      ) routes;
+      # One tryEval over every route check: on a table that holds no malformed route (the success path) the
+      # diagnostics read the delivery graph itself, and no per-bucket view is built.
+      allChecked =
+        (tryEval (
+          foldl' (
+            acc: c:
+            foldl' (acc': n: foldl' (a: x: builtins.seq x.r a) acc' (itemsOf c n)) acc (attrNames routes.${c})
+          ) true (attrNames routes)
+        )).success;
+      wellFormed =
+        if allChecked then
+          checked
+        else
+          graphOver {
+            itemsOf = okItemsOf;
+            indexMemo = okIndexMemo;
+          };
       showState = x: "${rName x.r} into ${at x.c x.n}${if x ? rk then " (carrying ${x.rk})" else ""}";
       cyclicIn = c: n: map (k: showState (stateOf k)) (cyclicKeys c n);
 
@@ -760,14 +853,61 @@ let
       wrapper = c: n: _: { imports = forwardedModules c n; };
 
       # ── C2: CONSUMED CONTENT OF A CELL WITH NO TERMINAL ──
-      allRoutes = concatMap (c: concatMap (itemsOf c) (attrNames routes.${c})) (attrNames routes);
-      consumedBy = groupBy (
-        x:
-        toJSON [
-          x.r.from.class
-          x.r.from.node
-        ]
-      ) allRoutes;
+      # The consumption table reads each RAW route's `from` and `select` through total accessors, never
+      # a route check, so a fault in a sibling's bucket reaches no stripping read. A route whose source
+      # is not a carried (class, node) with a well-formed `select` consumes nothing: it is UNPLACED
+      # (key ""), and its own check runs only in a stripping that leaves declared content.
+      rawKind =
+        r:
+        let
+          sel = r.from.select or null;
+        in
+        if !(selShapeOk sel) then
+          null
+        else if isAttrs sel then
+          "occurrence"
+        else
+          sel;
+      rawFromKey =
+        r:
+        let
+          fc = r.from.class or null;
+          fn = r.from.node or null;
+        in
+        if isString fc && isString fn && nodes ? ${fn} && rawKind r != null then
+          toJSON [
+            fc
+            fn
+          ]
+        else
+          "";
+      rawRoutesOf =
+        c: n:
+        let
+          b = routes.${c}.${n};
+        in
+        if isList b then b else [ ];
+      consumedBy = groupBy rawFromKey (
+        concatMap (c: concatMap (rawRoutesOf c) (attrNames routes.${c})) (attrNames routes)
+      );
+      # Forced only by a stripping that leaves declared content: each unplaced route's own check, from the
+      # memo, in bucket order (a bucket that is not a list refuses by its own text).
+      unplacedChecked = foldl' (
+        acc: c:
+        foldl' (
+          acc': n:
+          let
+            b = routes.${c}.${n};
+          in
+          if !(isList b) then
+            builtins.seq (rawBucketOf c n) acc'
+          else
+            foldl' (
+              acc2: i:
+              if rawFromKey (elemAt b i) == "" then builtins.seq (elemAt (itemsOf c n) i).r acc2 else acc2
+            ) acc' (genList (i: i) (length b))
+        ) acc (attrNames routes.${c})
+      ) null (attrNames routes);
       consumed =
         c: n:
         let
@@ -780,19 +920,19 @@ let
             } or [ ];
         in
         {
-          w1 = any (x: kindOf x == "cell") xs;
+          w1 = any (x: rawKind x == "cell") xs;
           allDeclared = any (
             x:
-            builtins.elem (kindOf x) [
+            builtins.elem (rawKind x) [
               "cell"
               "declared"
             ]
           ) xs;
           keys = listToAttrs (
             map (x: {
-              name = refKey x.r;
+              name = refKey x;
               value = true;
-            }) (filter (x: kindOf x == "occurrence") xs)
+            }) (filter (x: rawKind x == "occurrence") xs)
           );
         };
       # Every key delivered into (c, n), structurally: over the cells whose content reaches it whole.
@@ -868,10 +1008,10 @@ let
               }
           ) == false
         then
-          null
+          (if mods == [ ] then null else builtins.seq unplacedChecked null)
         else
           builtins.seq (declared c n) {
-            classes = pick mods;
+            classes = if idx == [ ] then [ ] else builtins.seq unplacedChecked (pick mods);
             elementIds = if nc ? elementIds && nc.elementIds ? ${c} then pick nc.elementIds.${c} else null;
             occurrenceIds = pick ids;
           };
@@ -956,6 +1096,8 @@ let
       occurrenceIds' = mapAttrs (n: _: perNode.${n}.occ) (projected.occurrenceIds or { });
 
       # ── DIAGNOSTICS (data) AND THE CHECK (a separate value) ──
+      # `cycles` and `affected` walk the WELL-FORMED graph, so a malformed route hides no cycle and no
+      # field throws; a malformed route reaches `check` through its target's `refusing` entry.
       unresolvedChecked =
         let
           byR = groupBy (
@@ -992,7 +1134,19 @@ let
               u // { required = u.required or true; }
           ) unresolved;
       targets = concatMap (
-        c: map (n: { inherit c n; }) (filter (n: itemsOf c n != [ ]) (attrNames routes.${c}))
+        c:
+        map (n: { inherit c n; }) (
+          filter (
+            n:
+            if allChecked then
+              itemsOf c n != [ ]
+            else
+              let
+                t = tryEval (itemsOf c n != [ ]);
+              in
+              !t.success || t.value
+          ) (attrNames routes.${c})
+        )
       ) (attrNames routes);
       refusing = filter (
         t:
@@ -1005,7 +1159,14 @@ let
       ) targets;
       # Every state any bucket reaches, and the cyclic ones (gen-graph `cycles` over the closed set).
       globalRoot = toJSON [ "all" ];
-      succAll = key: if key == globalRoot then allRoutes else succK key;
+      succAll =
+        key:
+        if key == globalRoot then
+          concatMap (c: concatMap (if allChecked then itemsOf c else okItemsOf c) (attrNames routes.${c})) (
+            attrNames routes
+          )
+        else
+          wellFormed.succK key;
       allCyclic = filter (k: k != globalRoot) (
         graph.cycles {
           nodes = [ globalRoot ] ++ graph.reachableVia succAll globalRoot;
@@ -1017,12 +1178,12 @@ let
           map (
             k:
             let
-              x = stateOf k;
+              x = wellFormed.stateOf k;
             in
             "${rName x.r} into ${at x.c x.n}"
           ) allCyclic
         );
-        affected = map (t: at t.c t.n) (filter (t: hasCycle t.c t.n) targets);
+        affected = map (t: at t.c t.n) (filter (t: wellFormed.hasCycle t.c t.n) targets);
         refusing = map (t: at t.c t.n) refusing;
         unresolved = unresolvedChecked;
         unrouted = map rName (filter (u: !u.required && u.status != "R") unresolvedChecked);

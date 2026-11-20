@@ -1466,8 +1466,8 @@ let
     ];
   };
   # ── lrnaw: a route carrying an undeclared key (a closure `guard`) into pewter, sibling welt. The
-  # source class has a terminal: with none, C2's stripping reads every route, and every route check
-  # then refuses on any target's read, the key check as its siblings do. ──
+  # source class has a terminal; welt's read does not reach the key check, with or without one
+  # (sibling isolation). ──
   guarded =
     extra:
     run {
