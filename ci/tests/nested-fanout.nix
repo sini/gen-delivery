@@ -22,6 +22,15 @@
 }:
 let
   t = genMerge.types;
+  # The realizer's module: the delivered modules' `marks` accumulate, so it is declared a `listOf`, as a
+  # class declares a list it accumulates; an undeclared list folds by `anything`'s equality fold, nixpkgs'.
+  realizerModule = {
+    freeformType = t.lazyAttrsOf t.anything;
+    options.marks = genMerge.mkOption {
+      type = t.listOf t.str;
+      default = [ ];
+    };
+  };
   inherit (aspects) guard pred;
   has = pred.has;
   marked = n: { nixos.marks = [ n ]; };
@@ -209,9 +218,8 @@ let
       nd: _:
       builtins.sort builtins.lessThan (
         builtins.filter (x: builtins.substring 0 2 x == "v-") (
-          (genMerge.evalModuleTree { } (
-            [ { freeformType = t.lazyAttrsOf t.anything; } ] ++ p.nodes.${nd}.classes.nixos or [ ]
-          )).config.marks or [ ]
+          (genMerge.evalModuleTree { } ([ realizerModule ] ++ p.nodes.${nd}.classes.nixos or [ ]))
+          .config.marks or [ ]
         )
       )
     ) p.nodes;

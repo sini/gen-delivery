@@ -16,6 +16,15 @@
 }:
 let
   t = genMerge.types;
+  # The realizer's module: the delivered modules' `marks` accumulate, so it is declared a `listOf`, as a
+  # class declares a list it accumulates; an undeclared list folds by `anything`'s equality fold, nixpkgs'.
+  realizerModule = {
+    freeformType = t.lazyAttrsOf t.anything;
+    options.marks = genMerge.mkOption {
+      type = t.listOf t.str;
+      default = [ ];
+    };
+  };
   cnf.keySemantics = {
     T.category = "class";
     U.category = "class";
@@ -60,9 +69,7 @@ let
     { modules, extent, ... }:
     {
       inherit pin;
-      marks =
-        (genMerge.evalModuleTree { } ([ { freeformType = t.lazyAttrsOf t.anything; } ] ++ modules))
-        .config.marks;
+      marks = (genMerge.evalModuleTree { } ([ realizerModule ] ++ modules)).config.marks;
       peers = builtins.attrNames extent;
     };
   realizeWith =

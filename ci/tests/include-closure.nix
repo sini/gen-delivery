@@ -34,6 +34,15 @@ let
       ;
   };
   t = genMerge.types;
+  # The realizer's module: the delivered modules' `marks` accumulate, so it is declared a `listOf`, as a
+  # class declares a list it accumulates; an undeclared list folds by `anything`'s equality fold, nixpkgs'.
+  realizerModule = {
+    freeformType = t.lazyAttrsOf t.anything;
+    options.marks = genMerge.mkOption {
+      type = t.listOf t.str;
+      default = [ ];
+    };
+  };
   cnf.keySemantics.nixos.category = "class";
 
   # `hosts` is a raw attrset rather than a typed registry, so a member can be written as something
@@ -60,7 +69,7 @@ let
     genDelivery.realize { } {
       nixos =
         { modules, ... }:
-        (genMerge.evalModuleTree { } ([ { freeformType = t.lazyAttrsOf t.anything; } ] ++ modules)).config;
+        (genMerge.evalModuleTree { } ([ realizerModule ] ++ modules)).config;
     } (projectWith cnf values);
   marksWith = cnf: values: (realized cnf values).nixos.server.marks;
   marks = marksWith cnf;
