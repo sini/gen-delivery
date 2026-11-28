@@ -7,8 +7,8 @@
 #   nix develop ./ci --command ci --tests-process
 #
 # gen-merge and gen-schema are read off gen-aspects' own `inputs`, gen-types, gen-memo and gen-scope
-# off gen-merge's, and gen-graph off gen-schema's: the edges `flake.lock` already records, so the
-# plane adds no pin.
+# off gen-merge's: the edges `flake.lock` already records, so the plane adds no pin. gen-graph is the
+# ci flake's own input, the instance `forward` is built on in every other plane.
 { inputs, ... }:
 {
   perSystem =
@@ -33,7 +33,7 @@
           export genMergeSrc=${inputs.gen-aspects.inputs.gen-merge} genSchemaSrc=${inputs.gen-aspects.inputs.gen-schema}
           export genTypesSrc=${inputs.gen-aspects.inputs.gen-merge.inputs.gen-types}
           export genMemoSrc=${inputs.gen-aspects.inputs.gen-merge.inputs.gen-memo}
-          export genGraphSrc=${inputs.gen-aspects.inputs.gen-schema.inputs.gen-graph}
+          export genGraphSrc=${inputs.gen-graph}
           export forwardFixtureSrc=${./forward-fixture.nix} nixpkgsSrc=${inputs.nixpkgs}
           # A fresh working directory per run (gen-harness `process-plane.nix`).
           TMPDIR=$(mktemp -d) out=$(mktemp)
@@ -65,12 +65,17 @@
           # at <arm> <n> <expected value>: runs one cell in its own process with the evaluator's
           # statistics on, and leaves `thunks` and `resolves` set. Statistics that were not written
           # die as COULD NOT MEASURE, never read as a count.
-          at() {
+          # evalCell <arm> <n> [<option> <value>]...: the plane's ONE evaluation site. One cell in its own process,
+          # serial, with the evaluator's statistics on and its peak resident set (kB) read by GNU time; leaves
+          # `rc`, `val`, the stderr file, the statistics file and `rss`.
+          evalCell() {
+            local a="$1" k="$2"
+            shift 2
             rm -f "$TMPDIR/stats"
             rc=0
-            val=$(NIX_SHOW_STATS=1 NIX_SHOW_STATS_PATH="$TMPDIR/stats" \
-              nix-instantiate "''${SERIAL_EVAL[@]}" --eval --strict --readonly-mode \
-              --argstr arm "$1" \
+            val=$(NIX_SHOW_STATS=1 NIX_SHOW_STATS_PATH="$TMPDIR/stats" ${pkgs.time}/bin/time -f '%M' -o "$TMPDIR/rss" \
+              nix-instantiate "''${SERIAL_EVAL[@]}" --eval --strict --readonly-mode "$@" \
+              --argstr arm "$a" \
               --argstr libSrc "$libSrc" \
               --argstr fixtureSrc "$fixtureSrc" \
               --argstr genPreludeSrc "$genPreludeSrc" \
@@ -87,9 +92,16 @@
               --argstr forwardFixtureSrc "$forwardFixtureSrc" \
               --argstr nixpkgsSrc "$nixpkgsSrc" \
               --argstr label "$label" \
-              --argstr n "$2" \
+              --argstr n "$k" \
               "$cells" 2> "$TMPDIR/err") || rc=$?
             ran=$((ran + 1))
+            rss=$(tail -n 1 "$TMPDIR/rss")
+            case "$rss" in
+              "" | *[!0-9]*) die "$a" "n=$k: could not measure, no peak resident set read ('$rss')" ;;
+            esac
+          }
+          at() {
+            evalCell "$1" "$2"
             [ "$rc" -eq 0 ] || die "$1" "n=$2: expected exit 0, got $rc: $(grep error "$TMPDIR/err" | head -2)"
             [ "$val" = "$3" ] || die "$1" "n=$2: expected $3, got '$val'"
             [ -s "$TMPDIR/stats" ] || die "$1" "n=$2: could not measure, no statistics written"
@@ -282,9 +294,79 @@
           [ "$mbb" -le "$mbmax" ] \
             || die forward-merge-depth "a distinct-cell merge level costs more bytes as the merges deepen than bounded: $mbb over d = 32..64, bound $mbmax"
 
+          # den-hoag-xwcy6: a relay read at depth ends in a value or a named refusal, never the evaluator's
+          # `max-call-depth exceeded`. `forward` fills a target's carriage memos source first, in the order of
+          # gen-graph's rooted lowlink run, so each memo entry finds its sources already forced and costs one
+          # frame however deep the relay. Before that, each read cost 5 to 13 frames per hop and every arm
+          # below aborted at d = 4096 under the default `max-call-depth` of 10000.
+          # deep <arm> <d> <M>: `evalCell` under `max-call-depth` M.
+          deep() {
+            evalCell "$1" "$2" --option max-call-depth "$3"
+          }
+          # passes <arm> <d> <M>: exit 0 with the depth as the value.
+          passes() {
+            deep "$1" "$2" "$3"
+            [ "$rc" -eq 0 ] || die "$1" "d=$2 under max-call-depth $3: expected exit 0, got $rc: $(grep error "$TMPDIR/err" | tail -1)"
+            [ "$val" = "$2" ] || die "$1" "d=$2: expected $2, got '$val'"
+          }
+          # refuses <arm> <d> <M> <text>: a non-zero exit whose stderr holds the refusal's exact text, and no
+          # depth abort.
+          refuses() {
+            deep "$1" "$2" "$3"
+            [ "$rc" -ne 0 ] || die "$1" "d=$2: expected the refusal, the read exited 0 with '$val'"
+            if grep -q 'max-call-depth exceeded' "$TMPDIR/err"; then
+              die "$1" "d=$2 under max-call-depth $3: the read aborted on the stack, not on its refusal"
+            fi
+            grep -qF "error: $4" "$TMPDIR/err" || die "$1" "d=$2: the refusal's text is not '$4': $(grep error "$TMPDIR/err" | tail -1)"
+          }
+          # overflows <arm> <d> <M>: the control. A non-zero exit on the evaluator's depth abort, so the
+          # instrument can see an overflow at that M.
+          overflows() {
+            deep "$1" "$2" "$3"
+            [ "$rc" -ne 0 ] && grep -q 'max-call-depth exceeded' "$TMPDIR/err" \
+              || die "$1" "d=$2 under max-call-depth $3: the control did not overflow (rc $rc), so a pass here measures nothing"
+          }
+          refusing="gen-delivery: forward: route t0/h0: placement segment { scope = \"nope\"; }: the scope bindings have no 'nope'"
+          keyRefusing() {
+            echo "gen-delivery: forward: route t$(($1 - 1))/q$(($1 - 1)): selects occurrence [\"t0\",\"c\",\"nope\"], which source cell c.t$(($1 - 1)) neither declares nor receives"
+          }
+          duplicate="gen-delivery: forward: target c.t1: duplicate route t0/h0 (2 declarations: fixture:h0, fixture:h0)"
+
+          # forward-relay-stack: every relay class at d = 4096 under the default max-call-depth.
+          for a in depth ladder mergeDepth occRelay shortcutDag captureFoot; do passes "$a" 4096 10000; done
+          # forward-relay-refuses-by-name: each refusing class reaches its name at d = 4096.
+          refuses refusingRelay 4096 10000 "$refusing"
+          refuses refusingKeyRelay 4096 10000 "$(keyRefusing 4096)"
+          refuses duplicateRelay 4096 10000 "$duplicate"
+          # its control: the d-deep non-tail recursion overflows at 12000 under 10000 and passes at 4096.
+          overflows twinCtl 12000 10000
+          passes twinCtl 4096 10000
+          echo "forward-relay-stack: 6 classes pass and 3 refuse by name at d = 4096 under max-call-depth 10000; twinCtl overflows at 12000"
+          # forward-relay-flat: the same arms and the every-target walk at d = 512 under M_F, the largest least
+          # max-call-depth any of them needs plus 32 (99 on Determinate, 82 on Nix, 81 on Lix, all at
+          # occRelay). The control's least is about d itself (518-520): at 512 it overflows under M_F, where its
+          # foldl' twin passes. A relay paying even one frame per hop would need M_F + 512.
+          mf=131
+          for a in depth ladder mergeDepth occRelay shortcutDag captureFoot checkRelay; do passes "$a" 512 "$mf"; done
+          refuses refusingRelay 512 "$mf" "$refusing"
+          refuses refusingKeyRelay 512 "$mf" "$(keyRefusing 512)"
+          refuses duplicateRelay 512 "$mf" "$duplicate"
+          overflows twinCtl 512 "$mf"
+          passes twinFold 512 "$mf"
+          echo "forward-relay-flat: 7 classes pass and 3 refuse by name at d = 512 under max-call-depth $mf; twinCtl overflows there"
+          # forward-relay-memory: a list-level fault at the foot carries its failed probe as data, so the peak
+          # resident set grows no faster than the relay. A catch per memo step over a thrown chain read 142 MB ->
+          # 1.45 GB over d = 256 -> 1024 on Nix; this construction reads x1.4-x1.7.
+          refuses duplicateRelay 256 100000 "$duplicate"; r256=$rss
+          refuses duplicateRelay 1024 100000 "$duplicate"; r1024=$rss
+          echo "forward-relay-memory: duplicateRelay peak RSS $r256 -> $r1024 kB over d = 256 -> 1024"
+          [ "$r256" -gt 0 ] || die forward-relay-memory "could not measure: no resident set at d = 256"
+          [ "$r1024" -lt $((4 * r256)) ] \
+            || die forward-relay-memory "the peak resident set grows faster than the relay: $r256 -> $r1024 kB over d = 256 -> 1024"
+
           # 0/0 is a false pass: the runner must have executed every evaluation above.
-          [ "$ran" = "37" ] || die runner "expected 37 evaluations, ran $ran"
-          echo "tests-process: 9 cells, every exit read unpiped, every count read" > $out
+          [ "$ran" = "62" ] || die runner "expected 62 evaluations, ran $ran"
+          echo "tests-process: 13 cells, every exit read unpiped, every count read" > $out
         ''
         + ''
           cat "$out"

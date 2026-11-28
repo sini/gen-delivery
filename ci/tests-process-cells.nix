@@ -308,6 +308,190 @@ let
         };
       in
       builtins.deepSeq r.realized.c.${ln d} d;
+    # den-hoag-xwcy6: the relay arms read at depth (`forward-relay-stack` and `forward-relay-flat` in
+    # `tests-process.nix`), each over `forward-fixture.nix`, every W1 hop at the root unless named. A
+    # succeeding arm's value is the depth; a refusing arm's read is unguarded, so its refusal text reaches
+    # stderr.
+    occRelay = relay.deep (
+      relay.realizedOf {
+        cells = relay.cellsN;
+        routes.c = {
+          t1 = [ (relay.w1 0 [ ] { }) ];
+        }
+        // relay.atHops 1 (i: [ (relay.occR i "own") ]);
+      } (relay.tn relay.d)
+    );
+    shortcutDag = relay.deep (
+      relay.realizedOf {
+        cells = relay.cellsN // {
+          tz = relay.own "tz";
+        };
+        routes.c = relay.chain [ ] // {
+          tz = map (
+            i:
+            relay.fx.route {
+              name = "z${toString i}";
+              order = [ i ];
+              from = {
+                class = "c";
+                node = relay.tn i;
+              };
+              select = "cell";
+              path = [ ];
+            }
+          ) (builtins.genList (i: i) (relay.d + 1));
+        };
+      } "tz"
+    );
+    # the foot hop reads `captured`, so its probe refuses and every cell above falls back
+    captureFoot = relay.deep (
+      relay.force (
+        (relay.wrapperOf (relay.run {
+          cells = relay.cellsN;
+          routes.c = relay.chain [ ] // {
+            t1 = [
+              (relay.w1 0 [
+                {
+                  captured = "node";
+                  path = [ "name" ];
+                }
+              ] { })
+            ];
+          };
+        }) (relay.tn relay.d))
+          { }
+      )
+    );
+    # an item-level placement fault at the foot
+    refusingRelay = relay.deep (
+      relay.realizedOf {
+        cells = relay.cellsN;
+        routes.c = relay.chain [ ] // {
+          t1 = [ (relay.w1 0 [ { scope = "nope"; } ] { }) ];
+        };
+      } (relay.tn relay.d)
+    );
+    # an occurrence relay selecting a key t0 neither declares nor receives
+    refusingKeyRelay = relay.deep (
+      relay.realizedOf {
+        cells = relay.cellsN;
+        routes.c = relay.atHops 1 (i: [ (relay.occR i "nope") ]);
+      } (relay.tn relay.d)
+    );
+    # a list-level fault at the foot: t1 holds h0 twice
+    duplicateRelay = relay.deep (
+      relay.realizedOf {
+        cells = relay.cellsN;
+        routes.c = relay.chain [ ] // {
+          t1 = [
+            (relay.w1 0 [ ] { })
+            (relay.w1 0 [ ] { order = [ 1 ]; })
+          ];
+        };
+      } (relay.tn relay.d)
+    );
+    # `check` and the diagnostics, the `refusing` walk over every target
+    checkRelay =
+      let
+        r = relay.run {
+          cells = relay.cellsN;
+          routes.c = relay.chain [ ];
+        };
+      in
+      relay.deep {
+        inherit (r) check;
+        inherit (r.diagnostics) cycles affected refusing;
+      };
+    # the controls: d-deep non-tail recursion (one frame per hop) and its foldl' twin (none)
+    twinCtl =
+      let
+        f = i: if i == 0 then [ (relay.hop 0) ] else f (i - 1) ++ [ (relay.hop i) ];
+      in
+      relay.deep (f relay.d);
+    twinFold = relay.deep (
+      builtins.foldl' (acc: i: acc ++ [ (relay.hop i) ]) [ ] (builtins.genList (i: i) (relay.d + 1))
+    );
+  };
+  relay = rec {
+    d = builtins.fromJSON n;
+    fx = import forwardFixtureSrc {
+      inherit genDelivery;
+      lib = import "${nixpkgsSrc}/lib";
+    };
+    tn = i: "t${toString i}";
+    own = t: {
+      c = [
+        [
+          "own"
+          (fx.own t)
+        ]
+      ];
+    };
+    cellsN = builtins.listToAttrs (
+      map (i: {
+        name = tn i;
+        value = own (tn i);
+      }) (builtins.genList (i: i) (d + 1))
+    );
+    w1 =
+      i: path: extra:
+      fx.route (
+        {
+          name = "h${toString i}";
+          order = [ 0 ];
+          from = {
+            class = "c";
+            node = tn i;
+          };
+          select = "cell";
+          inherit path;
+        }
+        // extra
+      );
+    occR =
+      i: id:
+      fx.route {
+        name = "q${toString i}";
+        order = [ 0 ];
+        from = {
+          class = "c";
+          node = tn i;
+        };
+        select = fx.occ "t0" "c" id;
+        path = [ ];
+      };
+    # t(i+1) <- routes i, for i from `lo` to d - 1
+    atHops =
+      lo: routes:
+      builtins.listToAttrs (
+        map (i: {
+          name = tn (i + 1);
+          value = routes i;
+        }) (builtins.genList (i: i + lo) (d - lo))
+      );
+    chain = path: atHops 0 (i: [ (w1 i path { }) ]);
+    run = s: fx.run ({ extraTerminals.s = _: null; } // s);
+    realizedOf = s: t: (run s).realized.c.${t};
+    wrapperOf =
+      r: t:
+      builtins.elemAt r.projected.nodes.${t}.classes.c (
+        builtins.length r.projected.nodes.${t}.classes.c - 1
+      );
+    force =
+      v:
+      if builtins.isFunction v then
+        force (v { })
+      else if builtins.isList v then
+        map force v
+      else if builtins.isAttrs v then
+        builtins.mapAttrs (_: force) v
+      else
+        v;
+    hop = i: {
+      k = i;
+      v = "own-${toString i}";
+    };
+    deep = v: builtins.deepSeq v d;
   };
   hostsIn = m: builtins.deepSeq m (builtins.length (builtins.attrNames m));
 in

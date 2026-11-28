@@ -226,6 +226,94 @@ let
     site = "fixture:${name}";
     reason = "${name}-reason";
   };
+  # den-hoag-xwcy6 O7: the two-fault fixtures. T reads A and B through W1 routes, each `[ name order ]`;
+  # A's foot `ha` (from a0) and B's foot `hb` (from b0) place at a scope segment that does not exist.
+  twoCells =
+    names:
+    builtins.listToAttrs (
+      map (n: {
+        name = n;
+        value.c = [
+          [
+            "own"
+            (own n)
+          ]
+        ];
+      }) names
+    );
+  w1 =
+    node: name: order:
+    route {
+      inherit name order;
+      from = c node;
+      select = "cell";
+      path = [ ];
+    };
+  badFoot =
+    node: name: segment:
+    route {
+      inherit name;
+      order = [ 0 ];
+      from = c node;
+      select = "cell";
+      path = [ { scope = segment; } ];
+    };
+  twoFault =
+    {
+      into,
+      a ? [ ],
+      b ? [ ],
+      extra ? [ ],
+    }:
+    (run {
+      cells = twoCells (
+        [
+          "T"
+          "A"
+          "B"
+          "a0"
+          "b0"
+        ]
+        ++ extra
+      );
+      routes.c = {
+        T = into;
+        A = [ (badFoot "a0" "ha" "nopeA") ] ++ a;
+        B = [ (badFoot "b0" "hb" "nopeB") ] ++ b;
+      };
+    }).realized.c.T;
+  dupsInto =
+    into:
+    let
+      dup = node: name: [
+        (route {
+          inherit name;
+          order = [ 0 ];
+          from = c node;
+        })
+        (route {
+          inherit name;
+          order = [ 1 ];
+          from = c node;
+        })
+      ];
+    in
+    (run {
+      cells = twoCells [
+        "T"
+        "A"
+        "B"
+        "a0"
+        "b0"
+      ];
+      routes.c = {
+        T = into;
+        A = dup "a0" "da";
+        B = dup "b0" "db";
+      };
+    }).realized.c.T;
+  faultA = exactly "${pre}: route a0/ha: placement segment { scope = \"nopeA\"; }: the scope bindings have no 'nopeA'";
+  faultB = exactly "${pre}: route b0/hb: placement segment { scope = \"nopeB\"; }: the scope bindings have no 'nopeB'";
 in
 {
   flake.testsError = {
@@ -557,8 +645,9 @@ in
       expr = dropped.realized.c.t0;
       expectedError.msg = exactly "${pre}: route into c.t1: p1/g1 must carry `from = { class; node; select; }`";
     };
-    # den-hoag-92bpu: on a relay chain, the placement refusal a read raises is the one `received`'s settles raise
-    # first (the deepest carrying hop), and between routes into one target it follows the carried occurrence keys.
+    # den-hoag-92bpu: on a relay chain, the placement refusal a read raises is the first refusing entry of a
+    # post-order from the target, sources in declared order: the deepest carrying hop, as the recursive read
+    # descends; between routes into one target it follows the carried occurrence keys.
     test-forward-relay-chain-placement-refuses-at-the-deepest-hop = {
       expr =
         (run {
@@ -873,6 +962,99 @@ in
           extraTerminals.s = _: null;
         }).realized.c.t2;
       expectedError.msg = exactly "${pre}: route into c.t1: p1/g1 must carry `order`, its declaration order, as a list of non-negative ints (the resolver supplies it)";
+    };
+    # ── den-hoag-xwcy6 O7: refusal PRIORITY between two faulting branches ──
+    # `forward` fills a target's closure in the rooted lowlink run's order (sources first, each state's
+    # sources in its bucket's declared order), so with two faults the read raises the first refusing entry
+    # of a post-order from the target: the one the recursive read reaches first. O7a-d are tree closures;
+    # O7e is the DAG arm, a branch reached twice (`twoPlaceDag`) and two INDEPENDENT faulting branches over
+    # a shared source S (`dagIndep*`), whose declared order decides the verdict.
+    test-forward-two-faults-o7a-tree-reads-the-first-declared = {
+      expr = twoFault {
+        into = [
+          (w1 "A" "fa" [ 0 ])
+          (w1 "B" "fb" [ 1 ])
+        ];
+      };
+      expectedError.msg = faultA;
+    };
+    test-forward-two-faults-o7b-tree-swap-reads-the-first-declared = {
+      expr = twoFault {
+        into = [
+          (w1 "B" "fb" [ 0 ])
+          (w1 "A" "fa" [ 1 ])
+        ];
+      };
+      expectedError.msg = faultB;
+    };
+    test-forward-two-faults-o7c-tree-listed-reads-the-declared-not-the-listed = {
+      expr = twoFault {
+        into = [
+          (w1 "A" "fa" [ 1 ])
+          (w1 "B" "fb" [ 0 ])
+        ];
+      };
+      expectedError.msg = faultB;
+    };
+    test-forward-two-faults-o7d-duplicates-read-the-first-declared = {
+      expr = dupsInto [
+        (w1 "A" "fa" [ 0 ])
+        (w1 "B" "fb" [ 1 ])
+      ];
+      expectedError.msg = exactly "${pre}: target c.A: duplicate route a0/da (2 declarations: fixture:da, fixture:da)";
+    };
+    test-forward-two-faults-o7d-duplicates-swap-read-the-first-declared = {
+      expr = dupsInto [
+        (w1 "B" "fb" [ 0 ])
+        (w1 "A" "fa" [ 1 ])
+      ];
+      expectedError.msg = exactly "${pre}: target c.B: duplicate route b0/db (2 declarations: fixture:db, fixture:db)";
+    };
+    test-forward-two-faults-o7e-dag-reads-the-first-declared = {
+      expr = twoFault {
+        into = [
+          (w1 "A" "fa" [ 0 ])
+          (w1 "B" "fb" [ 1 ])
+        ];
+        b = [ (w1 "A" "hx" [ 1 ]) ];
+      };
+      expectedError.msg = faultA;
+    };
+    test-forward-two-faults-o7e-dag-independent-reads-the-first-declared = {
+      expr = twoFault {
+        into = [
+          (w1 "A" "fa" [ 0 ])
+          (w1 "B" "fb" [ 1 ])
+        ];
+        a = [ (w1 "S" "sa" [ 1 ]) ];
+        b = [ (w1 "S" "sb" [ 1 ]) ];
+        extra = [ "S" ];
+      };
+      expectedError.msg = faultA;
+    };
+    test-forward-two-faults-o7e-dag-independent-swap-reads-the-first-declared = {
+      expr = twoFault {
+        into = [
+          (w1 "B" "fb" [ 0 ])
+          (w1 "A" "fa" [ 1 ])
+        ];
+        a = [ (w1 "S" "sa" [ 1 ]) ];
+        b = [ (w1 "S" "sb" [ 1 ]) ];
+        extra = [ "S" ];
+      };
+      expectedError.msg = faultB;
+    };
+    test-forward-two-faults-o7e-dag-independent-listed-reads-the-declared-not-the-listed = {
+      expr = twoFault {
+        into = [
+          (w1 "A" "fa" [ 1 ])
+          (w1 "B" "fb" [ 0 ])
+        ];
+        a = [ (w1 "S" "sa" [ 1 ]) ];
+        b = [ (w1 "S" "sb" [ 1 ]) ];
+        extra = [ "S" ];
+      };
+      expectedError.msg = faultB;
     };
   };
 }

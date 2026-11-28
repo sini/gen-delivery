@@ -500,14 +500,16 @@ let
               )
             ) per
           ) routes;
-          edgesIn = c: n: k: ((edgeMemo.${c} or { }).${n} or { }).${k} or (keysOf (succK k));
-          # One gen-graph lowlink run per target (`cycleOrder`, the run `cycles` makes): the cyclic set, and
-          # the components in the order the run pops them, the fill's order.
+          edgesIn =
+            c: n: k:
+            ((edgeMemo.${c} or { }).${n} or { }).${k} or (keysOf (succK k));
+          # One gen-graph lowlink run per target (`lowlink { root; }`, the run `cycles` makes): the cyclic set, and
+          # the run's dependency order, the fill's order.
           cycleMemo = mapAttrs (
             c: per:
             mapAttrs (
               n: _:
-              graph.cycleOrder {
+              graph.lowlink { root = rootKey c n; } {
                 nodes = closureKeys c n;
                 edges = edgesIn c n;
               }
@@ -515,7 +517,7 @@ let
           ) routes;
           cycleOf =
             c: n:
-            (cycleMemo.${c} or { }).${n} or (graph.cycleOrder {
+            (cycleMemo.${c} or { }).${n} or (graph.lowlink { root = rootKey c n; } {
               nodes = closureKeys c n;
               edges = edgesIn c n;
             });
@@ -906,8 +908,7 @@ let
       statesMemo = mapAttrs (
         c: per: mapAttrs (n: _: map stateOf (builtins.tail (closureKeys c n))) per
       ) routes;
-      statesOf =
-        c: n: (statesMemo.${c} or { }).${n} or (map stateOf (builtins.tail (closureKeys c n)));
+      statesOf = c: n: (statesMemo.${c} or { }).${n} or (map stateOf (builtins.tail (closureKeys c n)));
       treeShaped =
         c: n:
         let
@@ -1199,18 +1200,18 @@ let
           else
             builtins.seq (cellStep x.r.from.class x.r.from.node) acc
         ) true (fillOrder c n);
-      # Sources first: the closure's states in the order gen-graph's lowlink run pops them, the run
+      # Sources first: the closure's states in the `order` of gen-graph's rooted lowlink run, the run
       # `cyclicKeys` already makes (`cycleOf`). On an acyclic closure every component is one state, and
-      # Tarjan pops a state after every state it reaches, so each finds its sources already forced. The
+      # `order` puts a state after every state it reaches, so each finds its sources already forced. The
       # run starts at the target and visits each state's sources in the bucket's declared order
       # (`sortedOf`), so the first refusing entry is the one the recursive read reaches first. Only an
       # acyclic closure is read here.
-      # The run starts at the target's root, which every other state's component is reached from, so the
-      # root is popped last and is dropped; each popped key is read off the states the tree test decoded.
+      # The run starts at the target's root, which every other state is reached from, so the root comes
+      # last and is dropped; each key is read off the states the tree test decoded.
       fillOrder =
         c: n:
         let
-          ks = (cycleOf c n).popped;
+          ks = (cycleOf c n).order;
           sx = listToAttrs (
             map (x: {
               name = x.key;
